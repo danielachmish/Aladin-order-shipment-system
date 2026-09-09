@@ -1,5 +1,7 @@
 // חיבור Realtime — סעיף 12.1 באפיון: המכשיר נרשם לשינויים, ומרענן נתונים
 // לפי מזהה/סוג בלבד (לא מסתמך על תוכן ההודעה).
+import { WS_BASE } from './api.js';
+
 let socket = null;
 let listeners = [];
 let connected = false;
@@ -13,7 +15,7 @@ export function onLive(cb) {
 
 export function connectLive() {
   if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) return;
-  socket = new WebSocket('ws://localhost:4310/api/live');
+  socket = new WebSocket(WS_BASE);
   socket.onopen = () => { connected = true; listeners.forEach((l) => l({ type: '__connected' })); };
   socket.onclose = () => {
     connected = false;

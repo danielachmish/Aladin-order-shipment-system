@@ -5,6 +5,18 @@
 
 ר' [PLAN.md](PLAN.md) לתוכנית העבודה המלאה וסטטוס כל שלב.
 
+## פריסה (Vercel)
+
+ה-**frontend** פרוס ורץ בפועל: **https://aladin-frontend-kappa.vercel.app**
+
+⚠️ הכניסה עדיין לא תעבוד שם — האתר בנוי לדבר עם ה-backend בכתובת שמוגדרת
+במשתנה `VITE_API_BASE` (ר' `frontend/src/api.js`), וכרגע אין עדיין backend
+ציבורי. Vercel עצמו לא מתאים לארח את ה-backend כמו שהוא (Express +
+WebSocket + SQLite דורשים תהליך מתמשך, לא serverless) — צריך פלטפורמה
+כמו Render/Railway/Fly, או מעבר ל-Supabase (כפי שהאפיון עצמו ממליץ בסעיף 7).
+ברגע שיש כתובת backend ציבורית: מגדירים `VITE_API_BASE`/`VITE_WS_BASE`
+בהגדרות הפרויקט ב-Vercel ומפרסמים מחדש.
+
 ## מה זה כולל בפועל (לא רק תיאור)
 
 - **Backend** (Node/Express + SQLite + WebSocket): כל מנוע הסטטוסים, התור, בקשות
