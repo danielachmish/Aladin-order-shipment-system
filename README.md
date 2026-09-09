@@ -5,35 +5,28 @@
 
 ר' [PLAN.md](PLAN.md) לתוכנית העבודה המלאה וסטטוס כל שלב.
 
-## פריסה
+## פריסה — חי ועובד מקצה לקצה
 
-### Frontend — Vercel (פרוס ורץ)
+| חלק | כתובת | פלטפורמה |
+|---|---|---|
+| Frontend | **https://aladin-frontend-kappa.vercel.app** | Vercel |
+| Backend | **https://aladin-backend-6vdq.onrender.com** | Render (שירות `aladin-backend`, free plan) |
 
-**https://aladin-frontend-kappa.vercel.app**
+התחברות (משתמשי דמו למטה) עובדת בפועל דרך הכתובת של ה-frontend, מכל מקום.
 
-### Backend — Render (הוראות חיבור)
-
-Vercel לא מתאים לארח את ה-backend כמו שהוא (Express + WebSocket + SQLite
-דורשים תהליך מתמשך, לא serverless), אז הוא צריך לרוץ ב-Render. הכנתי הכל
-מראש ב-[`render.yaml`](render.yaml) — נשאר רק לחבר:
-
-1. בדשבורד של Render: **New +** → **Blueprint**.
-2. לחבר את הריפו `danielachmish/Aladin-order-shipment-system`.
-3. Render יזהה את `render.yaml` אוטומטית ויציע ליצור שירות בשם `aladin-backend`.
-4. הוא יבקש למלא כמה משתני סביבה (כי הם מסומנים כסודיים ולא נשמרים בקוד):
-   `JWT_SECRET` (כל מחרוזת אקראית ארוכה), ואם כבר יש פרטי Sigma/UPS — גם אותם
-   (אפשר גם להשאיר ריק בינתיים ולמלא מאוחר יותר ב-Environment של השירות).
-5. אחרי הפריסה תקבל כתובת כמו `https://aladin-backend.onrender.com`.
-6. להעתיק אותה ולעדכן ב-**הגדרות הפרויקט של aladin-frontend ב-Vercel** →
-   Environment Variables: `VITE_API_BASE = https://aladin-backend.onrender.com`
-   ו-`VITE_WS_BASE = wss://aladin-backend.onrender.com`, ואז **Redeploy**.
-
-⚠️ **מגבלה בתוכנית החינמית של Render**: הדיסק לא persistent — קובץ
-`aladin.db` (SQLite) מתאפס בכל דיפלוי/הפעלה מחדש (וגם השירות "נרדם" אחרי
-15 דקות ללא תנועה וקם מחדש בבקשה הבאה, עם כמה שניות השהיה). לשימוש אמיתי
-מתמשך (לא רק דמו) יש שתי אפשרויות בהמשך: דיסק persistent בתשלום קטן ב-Render,
-או מעבר ל-Postgres מנוהל (Render/Supabase) — זה כבר דורש שינוי קוד ולא
-עשיתי אותו כרגע כי לא ביקשת.
+⚠️ **מגבלות שכדאי לדעת:**
+- **הריפו הפך לציבורי** (היה פרטי) — זה מה שאפשר ל-Render לגשת אליו בלי
+  תהליך אישור GitHub App נוסף. אין בו סודות (`.env` לא נכלל), אבל אם רוצים
+  אותו שוב פרטי, צריך לחבר את ה-GitHub App של Render לריפו הספציפי (יש שלב
+  ידני בדפדפן שדורש מסך, לא רק נייד).
+- **תוכנית החינמית של Render**: הדיסק לא persistent — `aladin.db` (SQLite)
+  מתאפס בכל דיפלוי/הפעלה מחדש, והשירות "נרדם" אחרי 15 דקות ללא תנועה (קם
+  מחדש בבקשה הבאה עם כמה שניות השהיה). לשימוש אמיתי מתמשך: דיסק persistent
+  בתשלום קטן ב-Render, או מעבר ל-Postgres מנוהל — דורש שינוי קוד, לא נעשה.
+- כדי לעדכן משתני סביבה (Sigma/UPS) ב-backend: Render Dashboard → השירות
+  `aladin-backend` → Environment.
+- פריסה מחדש של ה-backend קורית אוטומטית בכל push ל-`main` (autoDeploy).
+  לפריסה מחדש של ה-frontend אחרי שינוי: `cd frontend && vercel --prod`.
 
 ## מה זה כולל בפועל (לא רק תיאור)
 
