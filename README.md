@@ -5,17 +5,35 @@
 
 ר' [PLAN.md](PLAN.md) לתוכנית העבודה המלאה וסטטוס כל שלב.
 
-## פריסה (Vercel)
+## פריסה
 
-ה-**frontend** פרוס ורץ בפועל: **https://aladin-frontend-kappa.vercel.app**
+### Frontend — Vercel (פרוס ורץ)
 
-⚠️ הכניסה עדיין לא תעבוד שם — האתר בנוי לדבר עם ה-backend בכתובת שמוגדרת
-במשתנה `VITE_API_BASE` (ר' `frontend/src/api.js`), וכרגע אין עדיין backend
-ציבורי. Vercel עצמו לא מתאים לארח את ה-backend כמו שהוא (Express +
-WebSocket + SQLite דורשים תהליך מתמשך, לא serverless) — צריך פלטפורמה
-כמו Render/Railway/Fly, או מעבר ל-Supabase (כפי שהאפיון עצמו ממליץ בסעיף 7).
-ברגע שיש כתובת backend ציבורית: מגדירים `VITE_API_BASE`/`VITE_WS_BASE`
-בהגדרות הפרויקט ב-Vercel ומפרסמים מחדש.
+**https://aladin-frontend-kappa.vercel.app**
+
+### Backend — Render (הוראות חיבור)
+
+Vercel לא מתאים לארח את ה-backend כמו שהוא (Express + WebSocket + SQLite
+דורשים תהליך מתמשך, לא serverless), אז הוא צריך לרוץ ב-Render. הכנתי הכל
+מראש ב-[`render.yaml`](render.yaml) — נשאר רק לחבר:
+
+1. בדשבורד של Render: **New +** → **Blueprint**.
+2. לחבר את הריפו `danielachmish/Aladin-order-shipment-system`.
+3. Render יזהה את `render.yaml` אוטומטית ויציע ליצור שירות בשם `aladin-backend`.
+4. הוא יבקש למלא כמה משתני סביבה (כי הם מסומנים כסודיים ולא נשמרים בקוד):
+   `JWT_SECRET` (כל מחרוזת אקראית ארוכה), ואם כבר יש פרטי Sigma/UPS — גם אותם
+   (אפשר גם להשאיר ריק בינתיים ולמלא מאוחר יותר ב-Environment של השירות).
+5. אחרי הפריסה תקבל כתובת כמו `https://aladin-backend.onrender.com`.
+6. להעתיק אותה ולעדכן ב-**הגדרות הפרויקט של aladin-frontend ב-Vercel** →
+   Environment Variables: `VITE_API_BASE = https://aladin-backend.onrender.com`
+   ו-`VITE_WS_BASE = wss://aladin-backend.onrender.com`, ואז **Redeploy**.
+
+⚠️ **מגבלה בתוכנית החינמית של Render**: הדיסק לא persistent — קובץ
+`aladin.db` (SQLite) מתאפס בכל דיפלוי/הפעלה מחדש (וגם השירות "נרדם" אחרי
+15 דקות ללא תנועה וקם מחדש בבקשה הבאה, עם כמה שניות השהיה). לשימוש אמיתי
+מתמשך (לא רק דמו) יש שתי אפשרויות בהמשך: דיסק persistent בתשלום קטן ב-Render,
+או מעבר ל-Postgres מנוהל (Render/Supabase) — זה כבר דורש שינוי קוד ולא
+עשיתי אותו כרגע כי לא ביקשת.
 
 ## מה זה כולל בפועל (לא רק תיאור)
 

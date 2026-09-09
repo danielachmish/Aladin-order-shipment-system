@@ -1,0 +1,36 @@
+# Render Blueprint — פריסת ה-backend כתהליך מתמשך (תומך WebSocket, בלי צורך
+# לשנות קוד). בדשבורד של Render: New + → Blueprint → לחבר את הריפו הזה →
+# Render יזהה את הקובץ הזה אוטומטית.
+#
+# משתני הסביבה המסומנים sync: false לא נשמרים כאן (לא עולים ל-git) —
+# Render יבקש אותם בממשק בזמן היצירה. ר' backend/.env.example להסבר על כל שדה.
+services:
+  - type: web
+    name: aladin-backend
+    runtime: node
+    plan: free
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: node src/server.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: JWT_SECRET
+        sync: false
+      - key: SIGMA_SQL_SERVER
+        sync: false
+      - key: SIGMA_SQL_PORT
+        value: 1433
+      - key: SIGMA_SQL_DATABASE
+        sync: false
+      - key: SIGMA_SQL_USER
+        sync: false
+      - key: SIGMA_SQL_PASSWORD
+        sync: false
+      - key: UPS_WEBHOOK_BEARER_SECRET
+        sync: false
+      - key: UPS_CLIENT_ID
+        sync: false
+      - key: UPS_CLIENT_SECRET
+        sync: false
