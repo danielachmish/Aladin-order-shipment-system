@@ -1,0 +1,13 @@
+{
+  "name": "אלדין – ניהול הזמנות ומשלוחים",
+  "short_name": "אלדין",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F3F7FA",
+  "theme_color": "#0B5C66",
+  "dir": "rtl",
+  "lang": "he",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}

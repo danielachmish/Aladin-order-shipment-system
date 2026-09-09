@@ -1,0 +1,86 @@
+import React, { useEffect, useState } from 'react';
+import Login from './pages/Login.jsx';
+import OrdersList from './pages/OrdersList.jsx';
+import OrderDetail from './pages/OrderDetail.jsx';
+import Exceptions from './pages/Exceptions.jsx';
+import Admin from './pages/Admin.jsx';
+import { getToken, getUser, clearSession } from './api.js';
+import { roleLabel } from './labels.js';
+import { connectLive, onLive, isConnected } from './ws.js';
+
+export default function App() {
+  const [user, setUser] = useState(getUser());
+  const [tab, setTab] = useState('orders'); // orders | exceptions | admin
+  const [openOrderKey, setOpenOrderKey] = useState(null);
+  const [live, setLive] = useState(isConnected());
+
+  useEffect(() => {
+    if (getToken()) {
+      connectLive();
+      const off = onLive((evt) => {
+        if (evt.type === '__connected') setLive(true);
+        if (evt.type === '__disconnected') setLive(false);
+      });
+      return off;
+    }
+  }, [user]);
+
+  if (!user) {
+    return <Login onLoggedIn={(u) => { setUser(u); connectLive(); }} />;
+  }
+
+  function logout() {
+    clearSession();
+    setUser(null);
+    setTab('orders');
+    setOpenOrderKey(null);
+  }
+
+  const isManager = user.role === 'warehouse_manager' || user.role === 'system_admin';
+
+  function openOrder(key) {
+    setOpenOrderKey(key);
+  }
+
+  return (
+    <div className="app-shell">
+      <div className="top-bar">
+        <div className="title">אלדין</div>
+        <div className="user">{user.name} · {roleLabel(user.role)}
+          <button className="logout" style={{ marginRight: 8 }} onClick={logout}>יציאה</button>
+        </div>
+      </div>
+      <div className={'live-pill ' + (live ? 'on' : 'off')}>
+        <span className="live-dot" /> {live ? 'מחובר בזמן אמת' : 'אין חיבור — הנתונים עשויים להיות לא עדכניים'}
+      </div>
+
+      <div className="content">
+        {openOrderKey ? (
+          <OrderDetail user={user} orderKey={openOrderKey} onBack={() => setOpenOrderKey(null)} />
+        ) : tab === 'orders' ? (
+          <OrdersList user={user} onOpenOrder={openOrder} />
+        ) : tab === 'exceptions' ? (
+          <Exceptions user={user} onOpenOrder={openOrder} />
+        ) : (
+          <Admin user={user} onOpenOrder={openOrder} />
+        )}
+      </div>
+
+      {!openOrderKey && (
+        <div className="tabbar">
+          <button className={tab === 'orders' ? 'active' : ''} onClick={() => setTab('orders')}>
+            <span className="icon">📦</span>הזמנות
+          </button>
+          <button className={tab === 'exceptions' ? 'active' : ''} onClick={() => setTab('exceptions')}>
+            <span className="icon">⚠️</span>חריגות
+          </button>
+          {isManager && (
+            <button className={tab === 'admin' ? 'active' : ''} onClick={() => setTab('admin')}>
+              <span className="icon">🛠️</span>ניהול
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
