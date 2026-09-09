@@ -1,0 +1,16 @@
+{
+  "name": "aladin-sigma-bridge",
+  "version": "1.0.0",
+  "private": true,
+  "description": "רץ על השרת הפיזי המקומי (איפה שה-SQL Server של סיגמא נמצא). קורא הזמנות מקומית ודוחף אותן ל-backend של אלדין בענן. אף פעם לא חושף את ה-SQL Server עצמו לאינטרנט (סנכרון יוצא בלבד, סעיף 7 באפיון).",
+  "scripts": {
+    "start": "node sync.js",
+    "install-service": "node install-service.js",
+    "uninstall-service": "node uninstall-service.js"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "mssql": "^12.7.1",
+    "node-windows": "^1.0.0-beta.8"
+  }
+}

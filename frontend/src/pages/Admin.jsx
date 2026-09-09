@@ -75,8 +75,8 @@ export default function Admin({ user, onOpenOrder }) {
           <div className="section-title">מצב חיבורים</div>
           <div className="admin-list-item">
             <div className="top"><b>Sigma</b>
-              <span className={'live-pill ' + (status.sigma.enabled ? 'on' : 'off')} style={{ margin: 0 }}>
-                {status.sigma.enabled ? `מחובר (${status.sigma.server})` : 'MOCK — לא מוגדר'}
+              <span className={'live-pill ' + (status.sigma.bridgeConfigured ? 'on' : 'off')} style={{ margin: 0 }}>
+                {status.sigma.bridgeConfigured ? 'Bridge מקומי מחובר' : 'MOCK — Bridge לא מוגדר'}
               </span>
             </div>
             {status.sigma.lastRun && <div className="meta">סנכרון אחרון: {new Date(status.sigma.lastRun.created_at).toLocaleString('he-IL')}</div>}

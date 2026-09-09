@@ -15,6 +15,10 @@ const sigma = {
   companyId: Number(process.env.SIGMA_COMPANY_ID || 3),
   sidra: Number(process.env.SIGMA_SIDRA || 0),
   pollIntervalMs: Number(process.env.SIGMA_POLL_INTERVAL_MS || 45000), // "כל 30 עד 60 שניות" (סעיף 8.3)
+  // סוד שמאמת את ה-Sigma Bridge המקומי כשהוא דוחף (push) הזמנות לנתיב
+  // /api/admin/sigma-sync. זה, ולא SIGMA_SQL_*, מה שצריך להיות מוגדר ב-Render —
+  // פרטי ה-SQL Server עצמם נשארים רק אצל ה-Bridge המקומי, ר' bridge/README.md.
+  bridgeSecret: process.env.SIGMA_BRIDGE_SECRET || null,
 };
 
 const ups = {

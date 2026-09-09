@@ -6,7 +6,8 @@ const { queueForStatus, positionInQueue } = require('./queue');
 const urgent = require('./urgentRequests');
 const ups = require('./upsWebhook');
 const { emitChange } = require('./bus');
-const { ups: upsCfg } = require('./config');
+const { ups: upsCfg, sigma: sigmaCfg } = require('./config');
+const sigmaIngest = require('./sigmaIngest');
 
 const router = express.Router();
 
@@ -41,6 +42,28 @@ router.post('/webhooks/ups', express.json(), (req, res) => {
     res.json(result);
   } catch (e) {
     res.status(e.status || 500).json({ error: e.message });
+  }
+});
+
+// ---------- Sigma Bridge (push מהרשת המקומית) ----------
+// ממוקם לפני authMiddleware בכוונה: ה-Bridge המקומי (ר' bridge/) לא מחזיק
+// טוקן JWT פנימי — הוא מזדהה עם SIGMA_BRIDGE_SECRET משלו (ר' config.js).
+router.post('/admin/sigma-sync', express.json({ limit: '5mb' }), (req, res) => {
+  if (!sigmaCfg.bridgeSecret) {
+    return res.status(400).json({ error: 'SIGMA_BRIDGE_SECRET לא מוגדר בשרת — אין למי לקבל נתונים' });
+  }
+  const header = req.headers.authorization || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+  if (token !== sigmaCfg.bridgeSecret) {
+    return res.status(401).json({ error: 'אימות Sigma Bridge נכשל' });
+  }
+  try {
+    const orders = req.body?.orders;
+    if (!Array.isArray(orders)) return res.status(400).json({ error: 'שדה orders חסר או לא מערך' });
+    const result = sigmaIngest.ingestOrders(orders);
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
   }
 });
 
@@ -261,7 +284,11 @@ router.get('/admin/integrations-status', requireRole('warehouse_manager', 'syste
   const lastUps = db.prepare(`SELECT * FROM sync_runs WHERE source = 'ups' ORDER BY created_at DESC LIMIT 1`).get();
   const failedRuns24h = db.prepare(`SELECT COUNT(*) c FROM sync_runs WHERE ok = 0 AND created_at >= datetime('now', '-1 day')`).get().c;
   res.json({
-    sigma: { enabled: sigma.enabled, server: sigma.enabled ? sigma.server : null, lastRun: lastSigma || null },
+    sigma: {
+      bridgeConfigured: !!sigma.bridgeSecret,
+      pullModeEnabled: sigma.enabled,
+      lastRun: lastSigma || null,
+    },
     ups: {
       webhookAuthEnabled: !!upsCfg2.webhookBearerSecret,
       reconcileEnabled: upsCfg2.reconcileEnabled,
