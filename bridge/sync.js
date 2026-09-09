@@ -11,17 +11,25 @@
 require('dotenv').config();
 const sql = require('mssql');
 
+// שם Instance (למשל SQLSIGMA) — נפוץ בהתקנות Sigma. כשיש Instance, לא קובעים
+// port קבוע; mssql/tedious פונה ל-SQL Server Browser (UDP 1434) כדי לאתר את
+// הפורט האמיתי של ה-instance לבד.
+const instanceName = process.env.SIGMA_SQL_INSTANCE || null;
+
 const cfg = {
   server: process.env.SIGMA_SQL_SERVER,
-  port: Number(process.env.SIGMA_SQL_PORT || 1433),
   database: process.env.SIGMA_SQL_DATABASE,
   user: process.env.SIGMA_SQL_USER,
   password: process.env.SIGMA_SQL_PASSWORD,
   options: {
     encrypt: process.env.SIGMA_SQL_ENCRYPT !== 'false',
     trustServerCertificate: process.env.SIGMA_SQL_TRUST_CERT === 'true',
+    ...(instanceName ? { instanceName } : {}),
   },
 };
+if (!instanceName) {
+  cfg.port = Number(process.env.SIGMA_SQL_PORT || 1433);
+}
 const companyId = Number(process.env.SIGMA_COMPANY_ID || 3);
 const sidra = Number(process.env.SIGMA_SIDRA || 0);
 const targetUrl = process.env.BRIDGE_TARGET_URL;
@@ -101,6 +109,7 @@ async function tick() {
   }
 }
 
-log(`Sigma Bridge מקומי מתחיל. שרת SQL: ${cfg.server}:${cfg.port}/${cfg.database}. יעד: ${targetUrl}. כל ${intervalMs / 1000} שניות.`);
+const serverDesc = instanceName ? `${cfg.server}\\${instanceName}` : `${cfg.server}:${cfg.port}`;
+log(`Sigma Bridge מקומי מתחיל. שרת SQL: ${serverDesc}/${cfg.database}. יעד: ${targetUrl}. כל ${intervalMs / 1000} שניות.`);
 tick();
 setInterval(tick, intervalMs);
