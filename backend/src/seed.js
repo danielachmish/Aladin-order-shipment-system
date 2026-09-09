@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const { db } = require('./db');
 const { seedOrders } = require('./sigmaBridgeMock');
+const { sigma: sigmaCfg } = require('./config');
 
 function uid(prefix) {
   return `${prefix}_${crypto.randomBytes(6).toString('hex')}`;
@@ -23,7 +24,11 @@ function run() {
   upsertUser({ user_id: uid('u'), username: 'manager', display_name: 'דנה (מנהלת מחסן)', password: '1234', role: 'warehouse_manager' });
   upsertUser({ user_id: uid('u'), username: 'admin', display_name: 'מנהל מערכת', password: '1234', role: 'system_admin' });
 
-  seedOrders(db);
+  if (sigmaCfg.enabled) {
+    console.log('Sigma מוגדר (.env) — מדלג על הזמנות דמו, ה-Sigma Bridge האמיתי יסנכרן הזמנות אמיתיות.');
+  } else {
+    seedOrders(db);
+  }
 
   db.prepare(`INSERT OR IGNORE INTO settings (key, value) VALUES ('agent_view_scope', 'all')`).run();
 

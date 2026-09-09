@@ -6,6 +6,7 @@ const { queueForStatus, positionInQueue } = require('./queue');
 const urgent = require('./urgentRequests');
 const ups = require('./upsWebhook');
 const { emitChange } = require('./bus');
+const { ups: upsCfg } = require('./config');
 
 const router = express.Router();
 
@@ -23,9 +24,18 @@ router.get('/health', (req, res) => {
 });
 
 // ---------- UPS Webhook ----------
-// MOCK: אין אימות Bearer אמיתי מול UPS בסביבה הזו (אין credentials). ר' upsWebhook.js.
 // ממוקם לפני authMiddleware בכוונה: UPS קורא לנתיב הזה בלי טוקן JWT פנימי שלנו.
+// אימות: אם UPS_WEBHOOK_BEARER_SECRET מוגדר ב-.env, נדרש Authorization: Bearer <secret>
+// תמיד מעל HTTPS (סעיף 9.2, 13). כל עוד לא מוגדר — מתקבל בלי אימות (מצב פיתוח בלבד,
+// מתועד גם ב-.env.example).
 router.post('/webhooks/ups', express.json(), (req, res) => {
+  if (upsCfg.webhookBearerSecret) {
+    const header = req.headers.authorization || '';
+    const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+    if (token !== upsCfg.webhookBearerSecret) {
+      return res.status(401).json({ error: 'אימות Webhook נכשל' });
+    }
+  }
   try {
     const result = ups.handleWebhook(req.body);
     res.json(result);
@@ -242,6 +252,37 @@ router.get('/exceptions', (req, res) => {
 router.post('/link-exceptions/:id/resolve', requireRole('warehouse_manager', 'system_admin'), (req, res) => {
   db.prepare('UPDATE link_exceptions SET resolved = 1 WHERE exception_id = ?').run(req.params.id);
   res.json({ ok: true });
+});
+
+// ---------- מצב חיבורים (סעיף 3.5 "מצב שירותים") ----------
+router.get('/admin/integrations-status', requireRole('warehouse_manager', 'system_admin'), (req, res) => {
+  const { sigma, ups: upsCfg2 } = require('./config');
+  const lastSigma = db.prepare(`SELECT * FROM sync_runs WHERE source = 'sigma' ORDER BY created_at DESC LIMIT 1`).get();
+  const lastUps = db.prepare(`SELECT * FROM sync_runs WHERE source = 'ups' ORDER BY created_at DESC LIMIT 1`).get();
+  const failedRuns24h = db.prepare(`SELECT COUNT(*) c FROM sync_runs WHERE ok = 0 AND created_at >= datetime('now', '-1 day')`).get().c;
+  res.json({
+    sigma: { enabled: sigma.enabled, server: sigma.enabled ? sigma.server : null, lastRun: lastSigma || null },
+    ups: {
+      webhookAuthEnabled: !!upsCfg2.webhookBearerSecret,
+      reconcileEnabled: upsCfg2.reconcileEnabled,
+      lastReconcile: lastUps || null,
+    },
+    failedRuns24h,
+  });
+});
+
+// שער Sigma (סעיף 17.1): בדיקת קריאת הזמנה בודדת אמיתית, לצורך אימות לפני פיתוח מלא
+router.post('/admin/sigma-test/:companyId/:sidra/:num', requireRole('system_admin', 'warehouse_manager'), async (req, res) => {
+  try {
+    const { sigma: sigmaCfg } = require('./config');
+    if (!sigmaCfg.enabled) return res.status(400).json({ error: 'Sigma לא מוגדר ב-.env' });
+    const realSigma = require('./realSigmaBridge');
+    const result = await realSigma.fetchOrderByKey(Number(req.params.companyId), Number(req.params.sidra), Number(req.params.num));
+    if (!result) return res.status(404).json({ error: 'הזמנה לא נמצאה ב-Sigma' });
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 module.exports = router;

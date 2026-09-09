@@ -66,4 +66,6 @@ export const api = {
 
   getAgentViewScope: () => request('/settings/agent-view-scope'),
   setAgentViewScope: (scope) => request('/settings/agent-view-scope', { method: 'POST', body: JSON.stringify({ scope }) }),
+
+  integrationsStatus: () => request('/admin/integrations-status'),
 };

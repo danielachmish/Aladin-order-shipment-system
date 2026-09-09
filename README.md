@@ -18,12 +18,42 @@
   לעצור את העובד, ואישור דחיפות שמזיז הזמנה לראש התור בזמן אמת בין שני חלונות
   דפדפן שונים.
 
-## מה מדומה (MOCK) ולמה
+## חיבורים אמיתיים ל-Sigma ול-UPS
+
+הקוד האמיתי (לא רק ה-mock) כבר קיים ומוכן:
+
+- **`backend/src/realSigmaBridge.js`** — מתחבר ל-SQL Server אמיתי (חבילת `mssql`),
+  קורא מ-`azmana_index`/`azmanot` לפי המפתח CompanyID+sidra+מספר הזמנה (סעיף 8),
+  ומסנכרן ל-`orders_cache`/`order_items_cache` כל 45 שניות (ניתן לשינוי).
+- **`backend/src/upsClient.js`** — OAuth client-credentials מול UPS, קריאת סטטוס
+  משלוח (`wb-status`), הגבלת קצב (100/דקה, 1000/שעה) ובדיקת התאמה תקופתית (סעיף 9.4).
+- **אימות Webhook** — כשיוגדר `UPS_WEBHOOK_BEARER_SECRET`, `POST /api/webhooks/ups`
+  ידרוש `Authorization: Bearer <secret>` תואם (סעיף 9.2, 13).
+
+**כדי להפעיל בפועל:** להעתיק `backend/.env.example` ל-`backend/.env` (הקובץ ב-.gitignore,
+לא עולה ל-git) ולמלא:
+
+| מה צריך | ממי | משתנה |
+|---|---|---|
+| שרת SQL, DB, משתמש/סיסמה לקריאה בלבד | מחשוב מקומי | `SIGMA_SQL_*` |
+| כתובת Webhook + סוד Bearer | UPS (`hd@ups.co.il`, סעיף 9.2) | `UPS_WEBHOOK_BEARER_SECRET` |
+| OAuth client id/secret (לא חובה להתחלה) | UPS Developer Portal | `UPS_CLIENT_ID`, `UPS_CLIENT_SECRET` |
+
+כל עוד `.env` לא קיים או שדה מסוים ריק — המערכת ממשיכה לעבוד עם ה-MOCK (ר' טבלה
+למטה) בלי לקרוס, ומדווחת את המצב בזמן אמת במסך ניהול → מצב חיבורים.
+
+⚠️ **לפני הרצה אמיתית מול Sigma**: שמות העמודות ב-`realSigmaBridge.js` (מלבד
+CompanyID/sidra/azmana_num/pline/prit_ID/pname/quant/pprice שמופיעים במפורש
+באפיון) הם השערה, מסומנים `// TODO`, וצריך לאמת אותם מול הסכימה האמיתית דרך
+`POST /api/admin/sigma-test/3/0/54707` (שער Sigma, סעיף 17.1) לפני שמסתמכים
+עליהם בפיילוט.
+
+## מה עדיין מדומה (MOCK) ולמה
 
 | רכיב | מה קורה בפועל | למה |
 |---|---|---|
-| **Sigma Bridge** | `backend/src/sigmaBridgeMock.js` מזין 4 הזמנות דמו (כולל 54707) ל-`orders_cache` במקום קריאה אמיתית מ-SQL Server | אין גישה לרשת/למסד Sigma האמיתי מסביבת הפיתוח הזו |
-| **UPS** | אין חיבור אמיתי (Bearer token, credentials); הפורמט והלוגיקה של ה-Webhook עצמו (`upsWebhook.js`) הם אמיתיים לפי המסמך, ונבדקו עם `scripts/simulate-ups-event.js` | אין credentials אמיתיים ל-UPS בסביבה הזו |
+| **Sigma** | ללא `.env` — `sigmaBridgeMock.js` מזין 4 הזמנות דמו (כולל 54707) | אין גישה לרשת/למסד Sigma האמיתי מסביבת הפיתוח הזו; הקוד האמיתי מוכן, ר' מעלה |
+| **UPS** | ללא `.env` — אין אימות Webhook ואין קריאות API יזומות; הפורמט והלוגיקה עצמם אמיתיים ונבדקו עם `scripts/simulate-ups-event.js` | אין credentials אמיתיים ל-UPS בסביבה הזו; הקוד האמיתי מוכן, ר' מעלה |
 | **מסד נתונים** | SQLite מקומי (`backend/aladin.db`) | אפס התקנה; הסכמה (`schema.sql`) נבנתה קרוב ל-PostgreSQL, כפי שהאפיון ממליץ ל-production, כדי שהמעבר יהיה קל |
 
 בכל מקום כזה בקוד יש הערה `// MOCK:` שמסבירה מה יוחלף וכיצד.
@@ -76,7 +106,10 @@ backend/
     schema.sql        סכמת מסד הנתונים (10 טבלאות, סעיף 10 באפיון)
     db.js              חיבור SQLite
     seed.js            יצירת משתמשים + הזמנות דמו
-    sigmaBridgeMock.js MOCK של קליטת הזמנות מ-Sigma
+    sigmaBridgeMock.js MOCK של קליטת הזמנות מ-Sigma (בשימוש כשאין .env)
+    realSigmaBridge.js חיבור SQL Server אמיתי (בשימוש כש-.env מוגדר)
+    upsClient.js        OAuth + wb-status + בדיקת התאמה תקופתית מול UPS
+    config.js            קריאת .env והחלטה מה MOCK ומה אמיתי
     workflow.js        מנוע הסטטוסים (claim אטומי, גרסאות, יומן אירועים)
     queue.js           חישוב תור + מיקום בתור
     urgentRequests.js  בקשות דחיפות + אישור מנהל
