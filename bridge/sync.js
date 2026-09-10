@@ -54,8 +54,13 @@ async function getPool() {
 }
 
 // "הרצה ראשונה טוענת הזמנות פתוחות וטווח זמן מוסכם בלבד" (סעיף 8.3).
-// "פתוחה" מוגדרת כאן כ-canceled=0 בטווח 14 הימים האחרונים — אפשר לכוונן
-// בהמשך לפי status_ID/tokef אם יתברר שצריך דיוק עסקי נוסף.
+// "פתוחה לליקוט" אומתה מול דניאל (10.9.2026): status_ID=0 = ההזמנה עדיין
+// אצל המזכירה (לא הודפסה, לא רלוונטית למחסן). status_ID=6 = הודפסה
+// והועברה למחסן — זה מה שנכנס לתור "ממתינה לליקוט". חלון 30 יום נשאר
+// כרשת ביטחון כדי לא למשוך היסטוריה ישנה בלי גבול.
+// ⚠️ ידוע וטרם טופל: חלק מההזמנות שמשורשרות ישר לחשבונית (בלי ליקוט
+// פיזי) נשארות תקועות ב-status_ID=6 גם אחרי שהן בפועל סגורות. צריך עוד
+// כלל (למשל בדיקת שרשור לחשבונית) כדי לסנן אותן החוצה — לא ממומש עדיין.
 async function fetchOpenOrders() {
   const p = await getPool();
   const headers = await p.request()
@@ -71,7 +76,8 @@ async function fetchOpenOrders() {
       LEFT JOIN maazni m ON m.CompanyID = h.CompanyID AND m.maazni_ID = h.maazni_ID
       WHERE h.CompanyID = @companyId AND h.sidra = @sidra
         AND h.canceled = 0
-        AND h.dorder >= DATEADD(day, -14, GETDATE())
+        AND h.status_ID = 6
+        AND h.dorder >= DATEADD(day, -30, GETDATE())
     `);
 
   const orders = [];
