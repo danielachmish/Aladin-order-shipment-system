@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS orders_cache (
   notes         TEXT,
   source_status TEXT, -- מצב ב-Sigma, לקריאה בלבד
   sigma_agent_name TEXT, -- שם הסוכן האמיתי מ-Sigma (t_agents.agent_name), תצוגה בלבד
+  sigma_created_at TEXT, -- FCreateDate מסיגמא (תאריך+שעה מדויקים), לסידור התור
   synced_at     TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

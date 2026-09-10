@@ -70,6 +70,7 @@ async function fetchOpenOrders() {
       SELECT h.CompanyID, h.sidra, h.azmana_num,
              m.name AS [customer_name],
              h.dorder AS [order_date],
+             h.FCreateDate AS [created_at],
              h.sum AS [total_amount],
              h.canceled AS [canceled],
              ag.agent_name AS [agent_name]
@@ -103,7 +104,7 @@ async function fetchOpenOrders() {
       companyId: h.CompanyID, sidra: h.sidra, orderNum: h.azmana_num,
       customerName: (h.customer_name || '').trim() || `לקוח ${h.azmana_num}`,
       agentName: (h.agent_name || '').trim() || null,
-      orderDate: h.order_date, deliveryDate: null,
+      orderDate: h.order_date, createdAt: h.created_at, deliveryDate: null,
       totalAmount: h.total_amount, notes: null,
       sourceStatus: h.canceled ? 'cancelled' : 'open',
       items: lines.recordset,

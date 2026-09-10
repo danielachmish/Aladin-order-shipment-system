@@ -21,5 +21,6 @@ function ensureColumn(table, column, definition) {
   }
 }
 ensureColumn('orders_cache', 'sigma_agent_name', 'TEXT');
+ensureColumn('orders_cache', 'sigma_created_at', 'TEXT');
 
 module.exports = { db, isNew };

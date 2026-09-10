@@ -1,8 +1,8 @@
 // תור העבודה — סעיף 5 באפיון: תור נפרד לכל תחנה, סדר = הבא בתור > דחוף מאושר >
-// הישנה ביותר קודם. "ישנה ביותר" = תאריך ההזמנה האמיתי בסיגמא (order_date),
-// לא שעת הסנכרון שלנו — אחרת כל ההזמנות שנכנסו באותו סבב Bridge (עשרות
-// בבת אחת) היו יוצאות כמעט באותו סדר אקראי. queue_entered_at נשאר כ-fallback
-// יציב לשוברי שוויון בין הזמנות מאותו תאריך בדיוק.
+// הישנה ביותר קודם. "ישנה ביותר" = sigma_created_at (FCreateDate בסיגמא —
+// תאריך+שעה מדויקים), לא שעת הסנכרון שלנו — אחרת כל ההזמנות שנכנסו באותו
+// סבב Bridge (עשרות בבת אחת) היו יוצאות כמעט באותו סדר אקראי. order_date
+// (תאריך בלבד, ללא שעה) ואז queue_entered_at נשארים כ-fallback לפי סדר.
 const { db } = require('./db');
 
 const PRIORITY_RANK = { next: 0, urgent: 1, normal: 2 };
@@ -15,7 +15,7 @@ function rankRow(row) {
 function queueForStatus(status) {
   const rows = db.prepare(`
     SELECT ws.order_key, ws.priority, ws.queue_entered_at, ws.agent_id,
-           oc.order_num, oc.customer_name, oc.order_date
+           oc.order_num, oc.customer_name, oc.order_date, oc.sigma_created_at
     FROM workflow_state ws
     JOIN orders_cache oc ON oc.order_key = ws.order_key
     WHERE ws.status = ?
@@ -24,6 +24,9 @@ function queueForStatus(status) {
   rows.sort((a, b) => {
     const pr = rankRow(a) - rankRow(b);
     if (pr !== 0) return pr;
+    const ca = a.sigma_created_at || '';
+    const cb = b.sigma_created_at || '';
+    if (ca !== cb) return ca < cb ? -1 : 1;
     const da = a.order_date || '';
     const db_ = b.order_date || '';
     if (da !== db_) return da < db_ ? -1 : 1;
