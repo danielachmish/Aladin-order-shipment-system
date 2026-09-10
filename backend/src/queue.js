@@ -1,4 +1,8 @@
-// תור העבודה — סעיף 5 באפיון: תור נפרד לכל תחנה, סדר = הבא בתור > דחוף מאושר > לפי שעת כניסה.
+// תור העבודה — סעיף 5 באפיון: תור נפרד לכל תחנה, סדר = הבא בתור > דחוף מאושר >
+// הישנה ביותר קודם. "ישנה ביותר" = תאריך ההזמנה האמיתי בסיגמא (order_date),
+// לא שעת הסנכרון שלנו — אחרת כל ההזמנות שנכנסו באותו סבב Bridge (עשרות
+// בבת אחת) היו יוצאות כמעט באותו סדר אקראי. queue_entered_at נשאר כ-fallback
+// יציב לשוברי שוויון בין הזמנות מאותו תאריך בדיוק.
 const { db } = require('./db');
 
 const PRIORITY_RANK = { next: 0, urgent: 1, normal: 2 };
@@ -10,7 +14,8 @@ function rankRow(row) {
 // כל ההזמנות במצב נתון (בדרך כלל waiting_pick), ממוינות לפי כללי התור
 function queueForStatus(status) {
   const rows = db.prepare(`
-    SELECT ws.order_key, ws.priority, ws.queue_entered_at, ws.agent_id, oc.order_num, oc.customer_name
+    SELECT ws.order_key, ws.priority, ws.queue_entered_at, ws.agent_id,
+           oc.order_num, oc.customer_name, oc.order_date
     FROM workflow_state ws
     JOIN orders_cache oc ON oc.order_key = ws.order_key
     WHERE ws.status = ?
@@ -19,6 +24,9 @@ function queueForStatus(status) {
   rows.sort((a, b) => {
     const pr = rankRow(a) - rankRow(b);
     if (pr !== 0) return pr;
+    const da = a.order_date || '';
+    const db_ = b.order_date || '';
+    if (da !== db_) return da < db_ ? -1 : 1;
     const ta = a.queue_entered_at || '';
     const tb = b.queue_entered_at || '';
     if (ta !== tb) return ta < tb ? -1 : 1;
