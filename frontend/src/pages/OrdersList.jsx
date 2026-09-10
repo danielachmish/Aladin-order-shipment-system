@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api.js';
 import { statusLabel, priorityLabel } from '../labels.js';
 import { onLive } from '../ws.js';
@@ -16,10 +16,24 @@ export default function OrdersList({ user, onOpenOrder }) {
   const [activeMetric, setActiveMetric] = useState(null);
   const [loading, setLoading] = useState(true);
   const [scope, setScope] = useState('all');
+  const [flashKeys, setFlashKeys] = useState(new Set());
+  const prevVersions = useRef({});
 
   async function load() {
     try {
       const data = await api.listOrders({});
+      const changed = new Set();
+      for (const o of data.orders) {
+        const prev = prevVersions.current[o.order_key];
+        if (prev !== undefined && (prev.status !== o.status || prev.version !== o.version)) {
+          changed.add(o.order_key);
+        }
+        prevVersions.current[o.order_key] = { status: o.status, version: o.version };
+      }
+      if (changed.size > 0) {
+        setFlashKeys(changed);
+        setTimeout(() => setFlashKeys(new Set()), 1400);
+      }
       setOrders(data.orders);
       setScope(data.agent_view_scope);
     } finally {
@@ -87,7 +101,11 @@ export default function OrdersList({ user, onOpenOrder }) {
       {!loading && filtered.length === 0 && <div className="empty-state">אין הזמנות להצגה</div>}
 
       {filtered.map((o) => (
-        <div className="order-card" key={o.order_key} onClick={() => onOpenOrder(o.order_key)}>
+        <div
+          className={'order-card' + (flashKeys.has(o.order_key) ? ' flash-update' : '')}
+          key={o.order_key}
+          onClick={() => onOpenOrder(o.order_key)}
+        >
           <div className="row1">
             <span className="order-num">הזמנה {o.order_num}</span>
             <span>{o.total_amount ? `₪${o.total_amount}` : ''}</span>

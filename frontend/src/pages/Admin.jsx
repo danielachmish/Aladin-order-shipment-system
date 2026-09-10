@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api.js';
 import { onLive } from '../ws.js';
+import Dashboard from '../components/Dashboard.jsx';
 
 export default function Admin({ user, onOpenOrder }) {
   const [scope, setScope] = useState('all');
@@ -45,6 +46,8 @@ export default function Admin({ user, onOpenOrder }) {
 
   return (
     <div>
+      <Dashboard onOpenOrder={onOpenOrder} />
+
       <div className="section-title">תצוגת הזמנות לסוכנים</div>
       <div className="toggle-row">
         <span>סוכנים רואים:</span>

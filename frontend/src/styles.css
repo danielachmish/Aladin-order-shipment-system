@@ -20,7 +20,7 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font-family: "Segoe UI", Arial, sans-serif;
+  font-family: "Rubik", "Segoe UI", Arial, sans-serif;
   direction: rtl;
 }
 
@@ -202,3 +202,77 @@ textarea, select {
   background: #fff; width: 100%; max-width: 480px; border-radius: 16px 16px 0 0; padding: 18px;
 }
 .modal-sheet h3 { margin-top: 0; }
+
+/* ---------- עדכון חי: הבהוב עדין על כרטיס שהשתנה ---------- */
+@keyframes flash-update {
+  0% { box-shadow: 0 0 0 0 rgba(11,92,102,.5); border-color: var(--teal); }
+  100% { box-shadow: 0 0 0 8px rgba(11,92,102,0); border-color: var(--border); }
+}
+.order-card.flash-update { animation: flash-update 1.4s ease-out; }
+
+/* ---------- הודעות צף (Toast) ---------- */
+.toast-stack {
+  position: fixed; top: 8px; left: 50%; transform: translateX(-50%);
+  width: calc(100% - 28px); max-width: 452px; z-index: 50;
+  display: flex; flex-direction: column; gap: 6px; pointer-events: none;
+}
+.toast {
+  background: var(--teal-dark); color: #fff; padding: 10px 14px; border-radius: 10px;
+  font-size: 13px; box-shadow: 0 4px 14px rgba(0,0,0,.18);
+  animation: toast-in .25s ease-out;
+}
+@keyframes toast-in { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+
+/* ---------- ציר זמן להזמנה ---------- */
+.order-timeline { display: flex; align-items: flex-start; margin: 14px 0; overflow-x: auto; padding-bottom: 4px; }
+.tl-step { display: flex; flex-direction: column; align-items: center; flex: 1; min-width: 62px; position: relative; }
+.tl-dot {
+  width: 22px; height: 22px; border-radius: 50%; background: #e5e7eb; color: #9ca3af;
+  display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: bold;
+  border: 2px solid #e5e7eb; z-index: 1;
+}
+.tl-step.done .tl-dot { background: var(--green); border-color: var(--green); color: #fff; }
+.tl-step.current .tl-dot { background: var(--teal); border-color: var(--teal); color: #fff; }
+.tl-step.skipped .tl-dot { background: #fdecea; border-color: var(--red); color: var(--red); }
+.tl-line { position: absolute; top: 10px; height: 2px; background: #e5e7eb; width: 100%; right: 50%; z-index: 0; }
+.tl-step:first-child .tl-line { display: none; }
+.tl-step.done .tl-line, .tl-step.current .tl-line { background: var(--green); }
+.tl-label { font-size: 10px; color: var(--muted); margin-top: 4px; text-align: center; }
+.tl-step.current .tl-label { color: var(--teal); font-weight: 600; }
+
+/* ---------- KPI cards (דשבורד מנהל) ---------- */
+.kpi-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 14px; }
+.kpi-card { background: #fff; border: 1px solid var(--border); border-radius: 12px; padding: 12px; }
+.kpi-card .kpi-label { font-size: 11px; color: var(--muted); }
+.kpi-card .kpi-value { font-size: 24px; font-weight: 700; color: var(--teal); margin-top: 2px; }
+.kpi-card .kpi-trend { font-size: 11px; margin-top: 4px; }
+.kpi-trend.up { color: var(--green); }
+.kpi-trend.down { color: var(--red); }
+.kpi-card.alert .kpi-value { color: var(--red); }
+.kpi-card.wide { grid-column: span 2; }
+
+.agent-table { width: 100%; border-collapse: collapse; font-size: 12px; background: #fff; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.agent-table th, .agent-table td { padding: 8px 10px; text-align: right; border-bottom: 1px solid #f0f0f0; }
+.agent-table th { background: #f3f7fa; color: var(--muted); font-weight: 600; }
+.agent-table tr:last-child td { border-bottom: none; }
+
+/* ---------- פריסת מחשב (מעל 768px): תפריט צד + טבלה במקום כרטיסים ---------- */
+@media (min-width: 768px) {
+  .app-shell {
+    max-width: 1100px;
+    padding-bottom: 0;
+    flex-direction: row;
+    min-height: 100vh;
+  }
+  .app-shell > .top-bar { position: fixed; top: 0; right: 0; left: 0; max-width: 1100px; margin: 0 auto; }
+  .content { padding-top: 66px; }
+  .tabbar {
+    position: fixed; top: 56px; bottom: auto; right: 0; left: auto; transform: none;
+    width: 160px; max-width: none; height: calc(100vh - 56px); flex-direction: column;
+    border-top: none; border-left: 1px solid var(--border); justify-content: flex-start; padding-top: 10px;
+  }
+  .tabbar button { flex: none; flex-direction: row; justify-content: flex-start; gap: 8px; padding: 12px 16px; font-size: 14px; }
+  .app-shell .content { margin-right: 160px; width: calc(100% - 160px); max-width: 760px; margin-left: auto; margin-right: 160px; padding: 76px 20px 20px; }
+  .kpi-grid { grid-template-columns: repeat(4, 1fr); }
+  .kpi-card.wide { grid-column: span 2; }
+}

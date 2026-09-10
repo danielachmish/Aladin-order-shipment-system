@@ -8,6 +8,8 @@ import Admin from './pages/Admin.jsx';
 import { getToken, getUser, clearSession } from './api.js';
 import { roleLabel } from './labels.js';
 import { connectLive, onLive, isConnected } from './ws.js';
+import { showToast } from './toast.js';
+import ToastStack from './components/ToastStack.jsx';
 
 export default function App() {
   const [user, setUser] = useState(getUser());
@@ -21,6 +23,15 @@ export default function App() {
       const off = onLive((evt) => {
         if (evt.type === '__connected') setLive(true);
         if (evt.type === '__disconnected') setLive(false);
+        if (evt.type === 'urgent_request' && evt.payload?.status === 'approved') {
+          showToast('בקשת דחיפות אושרה — ההזמנה עלתה בתור');
+        }
+        if (evt.type === 'shipment' && evt.payload?.status === 'ship_exception') {
+          showToast(`חריגת משלוח חדשה: ${evt.payload.track_no}`);
+        }
+        if (evt.type === 'shipment' && evt.payload?.status === 'ship_delivered') {
+          showToast(`משלוח נמסר: ${evt.payload.track_no}`);
+        }
       });
       return off;
     }
@@ -46,6 +57,7 @@ export default function App() {
 
   return (
     <div className="app-shell">
+      <ToastStack />
       <div className="top-bar">
         <div className="title">אלדין</div>
         <div className="user">{user.name} · {roleLabel(user.role)}

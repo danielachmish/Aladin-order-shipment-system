@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { api } from '../api.js';
 import { statusLabel, priorityLabel, shipLabel } from '../labels.js';
 import { onLive } from '../ws.js';
+import OrderTimeline from '../components/OrderTimeline.jsx';
 
 const ISSUE_REASONS = ['חוסר במלאי', 'פריט לא נמצא', 'כמות לא תואמת', 'הזמנה מעוכבת', 'אחר'];
 
@@ -87,6 +88,10 @@ export default function OrderDetail({ user, orderKey, onBack }) {
         {order.agent_name && <div className="meta">סוכן משויך: {order.agent_name}</div>}
         {order.status === 'on_hold' && <div className="meta" style={{ color: '#c0392b', marginTop: 6 }}>סיבה: {order.hold_reason}</div>}
       </div>
+
+      {!['cancelled'].includes(order.status) && (
+        <OrderTimeline status={order.status} preWaitStatus={order.pre_wait_status} />
+      )}
 
       <div className="section-title">פריטים</div>
       {items.map((it) => (

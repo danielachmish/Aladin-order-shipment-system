@@ -73,6 +73,8 @@ export const api = {
     return request('/history' + (qs ? `?${qs}` : ''));
   },
 
+  dashboard: () => request('/dashboard'),
+
   getAgentViewScope: () => request('/settings/agent-view-scope'),
   setAgentViewScope: (scope) => request('/settings/agent-view-scope', { method: 'POST', body: JSON.stringify({ scope }) }),
 

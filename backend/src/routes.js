@@ -8,6 +8,7 @@ const ups = require('./upsWebhook');
 const { emitChange } = require('./bus');
 const { ups: upsCfg, sigma: sigmaCfg } = require('./config');
 const sigmaIngest = require('./sigmaIngest');
+const { computeDashboard } = require('./dashboard');
 
 const router = express.Router();
 
@@ -300,6 +301,15 @@ router.post('/link-exceptions/:id/resolve', requireRole('warehouse_manager', 'sy
 
 // ---------- היסטוריה (הזמנות שסיימו ליקוט, למחסן ולניהול) ----------
 // "סיימו ליקוט" = כל הזמנה שכבר עברה את שלב הליקוט (גם אם עדיין באריזה/במשלוח/סגורה).
+// ---------- דשבורד מנהל ----------
+router.get('/dashboard', requireRole('warehouse_manager', 'system_admin'), (req, res) => {
+  try {
+    res.json(computeDashboard());
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 router.get('/history', requireRole('warehouse', 'warehouse_manager', 'system_admin'), (req, res) => {
   const { search, days } = req.query;
   const sinceDays = Number(days) > 0 ? Number(days) : 30;
