@@ -48,7 +48,7 @@ router.post('/webhooks/ups', express.json(), (req, res) => {
 // ---------- Sigma Bridge (push מהרשת המקומית) ----------
 // ממוקם לפני authMiddleware בכוונה: ה-Bridge המקומי (ר' bridge/) לא מחזיק
 // טוקן JWT פנימי — הוא מזדהה עם SIGMA_BRIDGE_SECRET משלו (ר' config.js).
-router.post('/admin/sigma-sync', express.json({ limit: '5mb' }), (req, res) => {
+router.post('/admin/sigma-sync', express.json({ limit: '25mb' }), (req, res) => {
   if (!sigmaCfg.bridgeSecret) {
     return res.status(400).json({ error: 'SIGMA_BRIDGE_SECRET לא מוגדר בשרת — אין למי לקבל נתונים' });
   }

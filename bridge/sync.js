@@ -96,8 +96,9 @@ async function fetchOpenOrders() {
   return orders;
 }
 
-async function pushOrders(orders) {
-  if (orders.length === 0) return { received: 0 };
+const BATCH_SIZE = 50; // דוחפים בחבילות קטנות כדי לא לחרוג ממגבלת גודל בקשה
+
+async function pushBatch(orders) {
   const res = await fetch(targetUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${bridgeSecret}` },
@@ -105,6 +106,18 @@ async function pushOrders(orders) {
   });
   if (!res.ok) throw new Error(`דחיפה נכשלה: ${res.status} ${await res.text()}`);
   return res.json();
+}
+
+async function pushOrders(orders) {
+  if (orders.length === 0) return { received: 0, created: 0, updated: 0 };
+  let created = 0, updated = 0;
+  for (let i = 0; i < orders.length; i += BATCH_SIZE) {
+    const batch = orders.slice(i, i + BATCH_SIZE);
+    const result = await pushBatch(batch);
+    created += result.created || 0;
+    updated += result.updated || 0;
+  }
+  return { received: orders.length, created, updated };
 }
 
 async function tick() {
