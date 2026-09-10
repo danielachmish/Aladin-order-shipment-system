@@ -63,10 +63,10 @@ async function fetchOpenOrders() {
     .input('sidra', sql.Int, sidra)
     .query(`
       SELECT h.CompanyID, h.sidra, h.azmana_num,
-             m.name AS customer_name,
-             h.dorder AS order_date,
-             h.sum AS total_amount,
-             h.canceled AS canceled
+             m.name AS [customer_name],
+             h.dorder AS [order_date],
+             h.sum AS [total_amount],
+             h.canceled AS [canceled]
       FROM azmana_index h
       LEFT JOIN maazni m ON m.CompanyID = h.CompanyID AND m.maazni_ID = h.maazni_ID
       WHERE h.CompanyID = @companyId AND h.sidra = @sidra
@@ -81,7 +81,7 @@ async function fetchOpenOrders() {
       .input('sidra', sql.Int, h.sidra)
       .input('orderNum', sql.Int, h.azmana_num)
       .query(`
-        SELECT pline AS lineNo, prit_ID AS itemCode, pname AS itemName, quant AS quantity, pprice AS price
+        SELECT pline AS [lineNo], prit_ID AS [itemCode], pname AS [itemName], quant AS [quantity], pprice AS [price]
         FROM azmanot WHERE CompanyID = @companyId AND sidra = @sidra AND azmana_num = @orderNum ORDER BY pline
       `);
     orders.push({
