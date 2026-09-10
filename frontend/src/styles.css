@@ -46,7 +46,9 @@ body {
   top: 0;
   z-index: 5;
 }
+.top-bar .title-group { display: flex; align-items: center; gap: 10px; }
 .top-bar .title { font-weight: bold; font-size: 16px; }
+.live-pill-inline { display: none; }
 .top-bar .user { font-size: 12px; opacity: .9; text-align: left; }
 .top-bar button.logout {
   background: transparent; border: 1px solid rgba(255,255,255,.5); color: #fff;
@@ -256,23 +258,92 @@ textarea, select {
 .agent-table th { background: #f3f7fa; color: var(--muted); font-weight: 600; }
 .agent-table tr:last-child td { border-bottom: none; }
 
-/* ---------- פריסת מחשב (מעל 768px): תפריט צד + טבלה במקום כרטיסים ---------- */
+/* ==================================================================
+   פריסת מחשב — Grid אמיתי שמסתגל לכל רוחב מסך, לא רק "מתיחה" של המובייל.
+   שורה 1: כותרת עליונה על פני כל הרוחב. שורה 2: תפריט צד קבוע + תוכן
+   שממורכז בתוך עצמו ברוחב נוח לקריאה (לא נמתח על פני כל מסך רחב).
+   ================================================================== */
 @media (min-width: 768px) {
+  html, body, #root { height: auto; min-height: 100%; }
+
   .app-shell {
-    max-width: 1100px;
-    padding-bottom: 0;
-    flex-direction: row;
+    max-width: none;
+    width: 100%;
     min-height: 100vh;
+    display: grid;
+    grid-template-columns: 200px 1fr;
+    grid-template-rows: 60px 1fr;
+    grid-template-areas: "topbar topbar" "nav content";
+    padding-bottom: 0;
   }
-  .app-shell > .top-bar { position: fixed; top: 0; right: 0; left: 0; max-width: 1100px; margin: 0 auto; }
-  .content { padding-top: 66px; }
+
+  .app-shell > .top-bar {
+    grid-area: topbar;
+    position: sticky; top: 0; z-index: 20;
+    padding: 0 24px;
+  }
+  .top-bar .title { font-size: 18px; }
+  .top-bar .user { font-size: 13px; }
+
+  .live-pill-mobile-only { display: none; }
+  .live-pill-inline {
+    display: inline-flex; margin: 0;
+    background: rgba(255,255,255,.15); color: #fff;
+  }
+  .live-pill-inline.off { background: rgba(255,255,255,.15); color: #ffd6d1; }
+
   .tabbar {
-    position: fixed; top: 56px; bottom: auto; right: 0; left: auto; transform: none;
-    width: 160px; max-width: none; height: calc(100vh - 56px); flex-direction: column;
-    border-top: none; border-left: 1px solid var(--border); justify-content: flex-start; padding-top: 10px;
+    grid-area: nav;
+    position: sticky; top: 60px; align-self: start;
+    width: auto; max-width: none; height: calc(100vh - 60px);
+    flex-direction: column; justify-content: flex-start;
+    border-top: none; border-left: 1px solid var(--border);
+    background: #fff; padding: 16px 8px; gap: 2px;
+    transform: none; left: auto;
   }
-  .tabbar button { flex: none; flex-direction: row; justify-content: flex-start; gap: 8px; padding: 12px 16px; font-size: 14px; }
-  .app-shell .content { margin-right: 160px; width: calc(100% - 160px); max-width: 760px; margin-left: auto; margin-right: 160px; padding: 76px 20px 20px; }
+  .tabbar button {
+    flex: none; flex-direction: row; justify-content: flex-start; gap: 10px;
+    padding: 11px 14px; font-size: 14px; border-radius: 8px; transition: background .15s;
+  }
+  .tabbar button:hover { background: var(--bg); }
+  .tabbar button.active { background: #e6f0f1; }
+  .tabbar .icon { font-size: 16px; }
+
+  .content {
+    grid-area: content;
+    padding: 24px 32px;
+    max-width: 980px;
+    width: 100%;
+    box-sizing: border-box;
+    justify-self: center; /* בלי זה, כשה-max-width קטן מהעמודה, התוכן נדבק לקצה אחד במקום למרכז */
+  }
+
+  /* רשימות (הזמנות/חריגות/היסטוריה/ניהול) זורמות לכמה עמודות לפי מקום פנוי,
+     במקום להישאר טור אחד צר על מסך רחב */
+  .list-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 12px;
+    align-items: start;
+  }
+  .list-grid .order-card, .list-grid .admin-list-item { margin-bottom: 0; }
+
+  .order-card, .admin-list-item, .shipment-card, .detail-header {
+    transition: box-shadow .15s, transform .15s;
+  }
+  .order-card:hover { box-shadow: 0 3px 10px rgba(0,0,0,.07); transform: translateY(-1px); }
+
+  .search-box input { font-size: 14px; }
   .kpi-grid { grid-template-columns: repeat(4, 1fr); }
   .kpi-card.wide { grid-column: span 2; }
+
+  /* מסך פרטי הזמנה: להשתמש ברוחב הפנוי במקום להישאר צר במרכז */
+  .content > div > .detail-header,
+  .content > .detail-header { max-width: 640px; }
+}
+
+@media (min-width: 1280px) {
+  .app-shell { grid-template-columns: 220px 1fr; }
+  .content { padding: 28px 48px; max-width: 1120px; }
+  .list-grid { grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
 }

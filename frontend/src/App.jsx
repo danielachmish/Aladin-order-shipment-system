@@ -59,12 +59,17 @@ export default function App() {
     <div className="app-shell">
       <ToastStack />
       <div className="top-bar">
-        <div className="title">אלדין</div>
+        <div className="title-group">
+          <div className="title">אלדין</div>
+          <div className={'live-pill live-pill-inline ' + (live ? 'on' : 'off')}>
+            <span className="live-dot" /> {live ? 'מחובר בזמן אמת' : 'אין חיבור'}
+          </div>
+        </div>
         <div className="user">{user.name} · {roleLabel(user.role)}
           <button className="logout" style={{ marginRight: 8 }} onClick={logout}>יציאה</button>
         </div>
       </div>
-      <div className={'live-pill ' + (live ? 'on' : 'off')}>
+      <div className={'live-pill live-pill-mobile-only ' + (live ? 'on' : 'off')}>
         <span className="live-dot" /> {live ? 'מחובר בזמן אמת' : 'אין חיבור — הנתונים עשויים להיות לא עדכניים'}
       </div>
 

@@ -66,6 +66,7 @@ export default function History({ onOpenOrder }) {
       {loading && <div className="empty-state">טוען...</div>}
       {!loading && filtered.length === 0 && <div className="empty-state">אין הזמנות שסיימו ליקוט בטווח הזה</div>}
 
+      <div className="list-grid">
       {filtered.map((o) => (
         <div className="order-card" key={o.order_key} onClick={() => onOpenOrder(o.order_key)}>
           <div className="row1">
@@ -91,6 +92,7 @@ export default function History({ onOpenOrder }) {
           )}
         </div>
       ))}
+      </div>
     </div>
   );
 }

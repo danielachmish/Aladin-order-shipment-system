@@ -37,6 +37,18 @@ const targetUrl = process.env.BRIDGE_TARGET_URL;
 const bridgeSecret = process.env.SIGMA_BRIDGE_SECRET;
 const intervalMs = Number(process.env.SYNC_INTERVAL_MS || 45000);
 
+// שעות פעילות: מסתנכרן רק בין השעות האלה (שעון המחשב המקומי — השרת הפיזי
+// יושב בישראל, אז זה שעון ישראל). מחוץ לשעות אלה השירות ממשיך לרוץ ברקע
+// (לא צריך להפעיל/לכבות ידנית) אבל פשוט מדלג על הסנכרון בפועל.
+const activeHourStart = Number(process.env.SYNC_ACTIVE_HOUR_START ?? 8);
+const activeHourEnd = Number(process.env.SYNC_ACTIVE_HOUR_END ?? 17);
+let wasInActiveWindow = null; // למניעת הצפת לוגים - מדווחים רק על שינוי מצב
+
+function isInActiveWindow() {
+  const hour = new Date().getHours();
+  return hour >= activeHourStart && hour < activeHourEnd;
+}
+
 function log(...args) {
   console.log(new Date().toISOString(), ...args);
 }
@@ -152,6 +164,15 @@ async function reconcile(orders) {
 }
 
 async function tick() {
+  const active = isInActiveWindow();
+  if (active !== wasInActiveWindow) {
+    log(active
+      ? `נכנס לשעות פעילות (${activeHourStart}:00–${activeHourEnd}:00) — מתחיל לסנכרן`
+      : `מחוץ לשעות פעילות (${activeHourStart}:00–${activeHourEnd}:00) — משהה סנכרון עד שעה ${activeHourStart}:00`);
+    wasInActiveWindow = active;
+  }
+  if (!active) return;
+
   try {
     const orders = await fetchOpenOrders();
     const result = await pushOrders(orders);
@@ -163,6 +184,6 @@ async function tick() {
 }
 
 const serverDesc = instanceName ? `${cfg.server}\\${instanceName}` : `${cfg.server}:${cfg.port}`;
-log(`Sigma Bridge מקומי מתחיל. שרת SQL: ${serverDesc}/${cfg.database}. יעד: ${targetUrl}. כל ${intervalMs / 1000} שניות.`);
+log(`Sigma Bridge מקומי מתחיל. שרת SQL: ${serverDesc}/${cfg.database}. יעד: ${targetUrl}. כל ${intervalMs / 1000} שניות, בין השעות ${activeHourStart}:00–${activeHourEnd}:00.`);
 tick();
 setInterval(tick, intervalMs);

@@ -100,6 +100,7 @@ export default function OrdersList({ user, onOpenOrder }) {
       {loading && <div className="empty-state">טוען...</div>}
       {!loading && filtered.length === 0 && <div className="empty-state">אין הזמנות להצגה</div>}
 
+      <div className="list-grid">
       {filtered.map((o) => (
         <div
           className={'order-card' + (flashKeys.has(o.order_key) ? ' flash-update' : '')}
@@ -124,6 +125,7 @@ export default function OrdersList({ user, onOpenOrder }) {
           </div>
         </div>
       ))}
+      </div>
     </div>
   );
 }
