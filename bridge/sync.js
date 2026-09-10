@@ -136,11 +136,26 @@ async function pushOrders(orders) {
   return { received: orders.length, created, updated };
 }
 
+// סוגר אוטומטית בענן הזמנות "ממתינות לליקוט" שכבר לא ברשימת ה-orders הנוכחית
+// (למשל שורשרו במלואה לחשבונית, בוטלו, או חזרו סטטוס). לא נוגע בהזמנות בעבודה.
+const reconcileUrl = targetUrl.replace(/\/sigma-sync$/, '/sigma-sync/reconcile');
+async function reconcile(orders) {
+  const validOrderNums = orders.map((o) => o.orderNum);
+  const res = await fetch(reconcileUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${bridgeSecret}` },
+    body: JSON.stringify({ companyId, sidra, validOrderNums }),
+  });
+  if (!res.ok) throw new Error(`ניקוי נכשל: ${res.status} ${await res.text()}`);
+  return res.json();
+}
+
 async function tick() {
   try {
     const orders = await fetchOpenOrders();
     const result = await pushOrders(orders);
-    log(`סונכרנו ${orders.length} הזמנות ->`, result);
+    const recon = await reconcile(orders);
+    log(`סונכרנו ${orders.length} הזמנות ->`, result, `| ניקוי: ${recon.closed} נסגרו מתוך ${recon.checked} שנבדקו`);
   } catch (e) {
     log('שגיאת סנכרון:', e.message);
   }

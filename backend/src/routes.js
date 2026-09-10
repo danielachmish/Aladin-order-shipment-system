@@ -67,6 +67,27 @@ router.post('/admin/sigma-sync', express.json({ limit: '25mb' }), (req, res) => 
   }
 });
 
+// ניקוי: סוגר אוטומטית הזמנות "ממתינות לליקוט" שכבר לא ברשימה הפתוחה של Sigma
+// (לא נוגע בהזמנות שכבר בעבודה). נקרא פעם אחת בסוף כל סבב סנכרון מלא.
+router.post('/admin/sigma-sync/reconcile', express.json({ limit: '1mb' }), (req, res) => {
+  if (!sigmaCfg.bridgeSecret) {
+    return res.status(400).json({ error: 'SIGMA_BRIDGE_SECRET לא מוגדר בשרת' });
+  }
+  const header = req.headers.authorization || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+  if (token !== sigmaCfg.bridgeSecret) {
+    return res.status(401).json({ error: 'אימות Sigma Bridge נכשל' });
+  }
+  try {
+    const { companyId, sidra, validOrderNums } = req.body || {};
+    if (!Array.isArray(validOrderNums)) return res.status(400).json({ error: 'שדה validOrderNums חסר או לא מערך' });
+    const result = sigmaIngest.reconcileOpenOrders(companyId, sidra, validOrderNums);
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 router.use(authMiddleware);
 
 // ---------- Settings ----------
@@ -275,6 +296,61 @@ router.get('/exceptions', (req, res) => {
 router.post('/link-exceptions/:id/resolve', requireRole('warehouse_manager', 'system_admin'), (req, res) => {
   db.prepare('UPDATE link_exceptions SET resolved = 1 WHERE exception_id = ?').run(req.params.id);
   res.json({ ok: true });
+});
+
+// ---------- היסטוריה (הזמנות שסיימו ליקוט, למחסן ולניהול) ----------
+// "סיימו ליקוט" = כל הזמנה שכבר עברה את שלב הליקוט (גם אם עדיין באריזה/במשלוח/סגורה).
+router.get('/history', requireRole('warehouse', 'warehouse_manager', 'system_admin'), (req, res) => {
+  const { search, days } = req.query;
+  const sinceDays = Number(days) > 0 ? Number(days) : 30;
+
+  let sql = `
+    SELECT oc.order_key, oc.order_num, oc.customer_name, oc.total_amount,
+           ws.status, ws.priority, ws.updated_at
+    FROM orders_cache oc
+    JOIN workflow_state ws ON ws.order_key = oc.order_key
+    WHERE ws.status IN ('ready_to_pack','waiting_pickup','delivered_to_ups','closed')
+      AND ws.updated_at >= datetime('now', ?)
+  `;
+  const params = [`-${sinceDays} days`];
+  if (search) {
+    sql += ` AND (oc.order_num LIKE ? OR oc.customer_name LIKE ?)`;
+    params.push(`%${search}%`, `%${search}%`);
+  }
+  sql += ` ORDER BY ws.updated_at DESC LIMIT 300`;
+
+  const orders = db.prepare(sql).all(...params);
+
+  const pickStartStmt = db.prepare(`
+    SELECT created_at, user_id FROM workflow_events
+    WHERE order_key = ? AND to_status = 'picking' ORDER BY created_at ASC LIMIT 1
+  `);
+  const pickEndStmt = db.prepare(`
+    SELECT created_at FROM workflow_events
+    WHERE order_key = ? AND to_status = 'ready_to_pack' ORDER BY created_at DESC LIMIT 1
+  `);
+  const issuesStmt = db.prepare(`
+    SELECT we.created_at, we.note, u.display_name AS user_name
+    FROM workflow_events we LEFT JOIN users u ON u.user_id = we.user_id
+    WHERE we.order_key = ? AND we.to_status IN ('on_hold', 'cancelled', 'waiting_answer')
+    ORDER BY we.created_at ASC
+  `);
+  const userStmt = db.prepare(`SELECT display_name FROM users WHERE user_id = ?`);
+
+  const result = orders.map((o) => {
+    const start = pickStartStmt.get(o.order_key);
+    const end = pickEndStmt.get(o.order_key);
+    const issues = issuesStmt.all(o.order_key);
+    return {
+      ...o,
+      pick_started_at: start ? start.created_at : null,
+      picked_by: start && start.user_id ? (userStmt.get(start.user_id) || {}).display_name : null,
+      pick_finished_at: end ? end.created_at : null,
+      issues,
+    };
+  });
+
+  res.json({ orders: result, sinceDays });
 });
 
 // ---------- מצב חיבורים (סעיף 3.5 "מצב שירותים") ----------

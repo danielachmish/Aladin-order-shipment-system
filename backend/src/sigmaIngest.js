@@ -3,8 +3,13 @@
 // אלדין בענן (Render) אינו יכול לגשת ל-SQL Server הפיזי שנמצא ברשת המקומית
 // (וגם לא צריך — בדיוק כפי שהאפיון ממליץ בסעיף 7: "סנכרון יוצא בלבד" מהרשת
 // המקומית אל הענן, בלי לחשוף את ה-SQL Server לאינטרנט).
+const crypto = require('crypto');
 const { db } = require('./db');
 const { emitChange } = require('./bus');
+
+function uid(prefix) {
+  return `${prefix}_${crypto.randomBytes(8).toString('hex')}`;
+}
 
 function orderKey(companyId, sidra, num) {
   return `${companyId}|${sidra}|${num}`;
@@ -61,4 +66,36 @@ function ingestOrders(orders) {
   return { received: orders.length, created, updated };
 }
 
-module.exports = { ingestOrders, orderKey };
+// ניקוי: הזמנות ש"ממתינות לליקוט" (עוד לא התחילו) אבל כבר לא מופיעות ברשימה
+// הפתוחה שנשלחה מ-Sigma (למשל שורשרו במלואה לחשבונית, בוטלו, או חזרו למזכירה) —
+// נסגרות אוטומטית. לא נוגעים בהזמנה שכבר בליקוט/אריזה/משלוח — מישהו כבר עובד עליה.
+function reconcileOpenOrders(companyId, sidra, validOrderNums) {
+  const prefix = `${companyId}|${sidra}|`;
+  const rows = db.prepare(`
+    SELECT order_key FROM workflow_state
+    WHERE status = 'waiting_pick' AND order_key LIKE ?
+  `).all(`${prefix}%`);
+
+  const validSet = new Set(validOrderNums.map(String));
+  let closedCount = 0;
+  const tx = db.transaction(() => {
+    for (const r of rows) {
+      const num = r.order_key.split('|')[2];
+      if (validSet.has(num)) continue;
+      db.prepare(`
+        UPDATE workflow_state SET status = 'closed', version = version + 1, updated_at = datetime('now')
+        WHERE order_key = ?
+      `).run(r.order_key);
+      db.prepare(`
+        INSERT INTO workflow_events (event_id, order_key, user_id, from_status, to_status, note)
+        VALUES (?, ?, NULL, 'waiting_pick', 'closed', 'הוסרה מסנכרון Sigma — כבר לא בקריטריון ההזמנות הפתוחות')
+      `).run(uid('evt'), r.order_key);
+      emitChange('order', { order_key: r.order_key, status: 'closed' });
+      closedCount++;
+    }
+  });
+  tx();
+  return { checked: rows.length, closed: closedCount };
+}
+
+module.exports = { ingestOrders, reconcileOpenOrders, orderKey };

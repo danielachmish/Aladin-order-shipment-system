@@ -3,6 +3,7 @@ import Login from './pages/Login.jsx';
 import OrdersList from './pages/OrdersList.jsx';
 import OrderDetail from './pages/OrderDetail.jsx';
 import Exceptions from './pages/Exceptions.jsx';
+import History from './pages/History.jsx';
 import Admin from './pages/Admin.jsx';
 import { getToken, getUser, clearSession } from './api.js';
 import { roleLabel } from './labels.js';
@@ -37,6 +38,7 @@ export default function App() {
   }
 
   const isManager = user.role === 'warehouse_manager' || user.role === 'system_admin';
+  const canSeeHistory = user.role === 'warehouse' || isManager;
 
   function openOrder(key) {
     setOpenOrderKey(key);
@@ -61,6 +63,8 @@ export default function App() {
           <OrdersList user={user} onOpenOrder={openOrder} />
         ) : tab === 'exceptions' ? (
           <Exceptions user={user} onOpenOrder={openOrder} />
+        ) : tab === 'history' ? (
+          <History onOpenOrder={openOrder} />
         ) : (
           <Admin user={user} onOpenOrder={openOrder} />
         )}
@@ -74,6 +78,11 @@ export default function App() {
           <button className={tab === 'exceptions' ? 'active' : ''} onClick={() => setTab('exceptions')}>
             <span className="icon">⚠️</span>חריגות
           </button>
+          {canSeeHistory && (
+            <button className={tab === 'history' ? 'active' : ''} onClick={() => setTab('history')}>
+              <span className="icon">🕒</span>היסטוריה
+            </button>
+          )}
           {isManager && (
             <button className={tab === 'admin' ? 'active' : ''} onClick={() => setTab('admin')}>
               <span className="icon">🛠️</span>ניהול

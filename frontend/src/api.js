@@ -68,6 +68,11 @@ export const api = {
   exceptions: () => request('/exceptions'),
   resolveLinkException: (id) => request(`/link-exceptions/${id}/resolve`, { method: 'POST', body: JSON.stringify({}) }),
 
+  history: (params = {}) => {
+    const qs = new URLSearchParams(params).toString();
+    return request('/history' + (qs ? `?${qs}` : ''));
+  },
+
   getAgentViewScope: () => request('/settings/agent-view-scope'),
   setAgentViewScope: (scope) => request('/settings/agent-view-scope', { method: 'POST', body: JSON.stringify({ scope }) }),
 
