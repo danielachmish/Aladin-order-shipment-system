@@ -92,7 +92,7 @@ function baseOrderRow(order_key) {
   return db.prepare(`
     SELECT oc.*, ws.status, ws.priority, ws.agent_id, ws.claimed_by, ws.queue_entered_at,
            ws.version, ws.hold_reason, ws.pre_wait_status, ws.updated_at AS wf_updated_at,
-           u.display_name AS agent_name, cu.display_name AS claimed_by_name
+           COALESCE(u.display_name, oc.sigma_agent_name) AS agent_name, cu.display_name AS claimed_by_name
     FROM orders_cache oc
     JOIN workflow_state ws ON ws.order_key = oc.order_key
     LEFT JOIN users u ON u.user_id = ws.agent_id
@@ -118,7 +118,7 @@ router.get('/orders', (req, res) => {
   let sql = `
     SELECT oc.order_key, oc.order_num, oc.customer_name, oc.total_amount, oc.line_count, oc.notes,
            ws.status, ws.priority, ws.agent_id, ws.claimed_by, ws.queue_entered_at, ws.version,
-           u.display_name AS agent_name, cu.display_name AS claimed_by_name
+           COALESCE(u.display_name, oc.sigma_agent_name) AS agent_name, cu.display_name AS claimed_by_name
     FROM orders_cache oc
     JOIN workflow_state ws ON ws.order_key = oc.order_key
     LEFT JOIN users u ON u.user_id = ws.agent_id

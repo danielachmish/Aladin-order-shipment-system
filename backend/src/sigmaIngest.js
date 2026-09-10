@@ -11,16 +11,17 @@ function orderKey(companyId, sidra, num) {
 }
 
 // order: { companyId, sidra, orderNum, customerName, orderDate, deliveryDate,
-//          totalAmount, notes, sourceStatus, items: [{lineNo,itemCode,itemName,quantity,price,location}] }
+//          totalAmount, notes, sourceStatus, agentName, items: [{lineNo,itemCode,itemName,quantity,price,location}] }
 function ingestOrders(orders) {
   const insertOrder = db.prepare(`
-    INSERT INTO orders_cache (order_key, company_id, sidra, order_num, customer_name, order_date, delivery_date, total_amount, line_count, notes, source_status, synced_at)
-    VALUES (@order_key, @company_id, @sidra, @order_num, @customer_name, @order_date, @delivery_date, @total_amount, @line_count, @notes, @source_status, datetime('now'))
+    INSERT INTO orders_cache (order_key, company_id, sidra, order_num, customer_name, order_date, delivery_date, total_amount, line_count, notes, source_status, sigma_agent_name, synced_at)
+    VALUES (@order_key, @company_id, @sidra, @order_num, @customer_name, @order_date, @delivery_date, @total_amount, @line_count, @notes, @source_status, @sigma_agent_name, datetime('now'))
     ON CONFLICT(order_key) DO UPDATE SET
       customer_name = excluded.customer_name, order_date = excluded.order_date,
       delivery_date = excluded.delivery_date, total_amount = excluded.total_amount,
       line_count = excluded.line_count, notes = excluded.notes,
-      source_status = excluded.source_status, synced_at = datetime('now')
+      source_status = excluded.source_status, sigma_agent_name = excluded.sigma_agent_name,
+      synced_at = datetime('now')
   `);
   const insertItem = db.prepare(`
     INSERT OR REPLACE INTO order_items_cache (order_key, line_no, item_code, item_name, quantity, price, location, note)
@@ -42,6 +43,7 @@ function ingestOrders(orders) {
         customer_name: o.customerName, order_date: o.orderDate || null, delivery_date: o.deliveryDate || null,
         total_amount: o.totalAmount || null, line_count: (o.items || []).length,
         notes: o.notes || null, source_status: o.sourceStatus || 'open',
+        sigma_agent_name: o.agentName || null,
       });
       (o.items || []).forEach((it, idx) => {
         insertItem.run(key, it.lineNo ?? idx + 1, it.itemCode, it.itemName, it.quantity, it.price, it.location || null, null);

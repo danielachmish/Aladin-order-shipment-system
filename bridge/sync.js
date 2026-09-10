@@ -71,9 +71,11 @@ async function fetchOpenOrders() {
              m.name AS [customer_name],
              h.dorder AS [order_date],
              h.sum AS [total_amount],
-             h.canceled AS [canceled]
+             h.canceled AS [canceled],
+             ag.agent_name AS [agent_name]
       FROM azmana_index h
       LEFT JOIN maazni m ON m.CompanyID = h.CompanyID AND m.maazni_ID = h.maazni_ID
+      LEFT JOIN t_agents ag ON ag.agent_ID = h.agent_ID
       WHERE h.CompanyID = @companyId AND h.sidra = @sidra
         AND h.canceled = 0
         AND h.status_ID = 6
@@ -93,6 +95,7 @@ async function fetchOpenOrders() {
     orders.push({
       companyId: h.CompanyID, sidra: h.sidra, orderNum: h.azmana_num,
       customerName: (h.customer_name || '').trim() || `לקוח ${h.azmana_num}`,
+      agentName: (h.agent_name || '').trim() || null,
       orderDate: h.order_date, deliveryDate: null,
       totalAmount: h.total_amount, notes: null,
       sourceStatus: h.canceled ? 'cancelled' : 'open',

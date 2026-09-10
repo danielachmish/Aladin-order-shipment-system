@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS orders_cache (
   line_count    INTEGER,
   notes         TEXT,
   source_status TEXT, -- מצב ב-Sigma, לקריאה בלבד
+  sigma_agent_name TEXT, -- שם הסוכן האמיתי מ-Sigma (t_agents.agent_name), תצוגה בלבד
   synced_at     TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
