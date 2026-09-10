@@ -79,6 +79,13 @@ async function fetchOpenOrders() {
       WHERE h.CompanyID = @companyId AND h.sidra = @sidra
         AND h.canceled = 0
         AND h.status_ID = 6
+        -- אומת מול הזמנה 54464 (10.9.2026): אם כל השורות tquan=0, ההזמנה כבר
+        -- שורשרה במלואה לחשבונית ואין מה לליקוט למרות שהיא עדיין status_ID=6
+        AND EXISTS (
+          SELECT 1 FROM azmanot a
+          WHERE a.CompanyID = h.CompanyID AND a.sidra = h.sidra AND a.azmana_num = h.azmana_num
+            AND a.canceled = 0 AND a.tquan > 0
+        )
         AND h.dorder >= DATEADD(day, -30, GETDATE())
     `);
 
