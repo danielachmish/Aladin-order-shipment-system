@@ -3,10 +3,11 @@
 // אף פעם לא נפתח חיבור נכנס אל תוך הרשת המקומית (סעיף 7 באפיון: "סנכרון
 // יוצא בלבד"; סעיף 13: "SQL Server של סיגמא אינו חשוף לאינטרנט").
 //
-// ⚠️ שמות העמודות מסומנים // TODO במקומות שלא אומתו מול הסכימה האמיתית של
-// סיגמא (רק CompanyID/sidra/azmana_num/pline/prit_ID/pname/quant/pprice
-// מצוינים במפורש באפיון, סעיף 8.2). להריץ פעם אחת ידנית (node sync.js) ולוודא
-// שהזמנה 54707 חוזרת נכון לפני שמתקינים כשירות קבוע.
+// שמות העמודות אומתו מול הסכימה האמיתית ב-10.9.2026 (ר' bridge/inspect-schema.js):
+// azmana_index: אין cust_name/order_date/source_status — יש dorder, sum (סכום
+// כולל מע"מ), canceled (bit), ומאזני מקושר דרך maazni_ID. שם הלקוח מגיע מ-
+// maazni.name (JOIN לפי CompanyID+maazni_ID). אין עמודת delivery_date או notes
+// גנרית בטבלה — לכן delivery_date ו-notes נשארים ריקים בינתיים.
 
 require('dotenv').config();
 const sql = require('mssql');
@@ -52,20 +53,25 @@ async function getPool() {
   return pool;
 }
 
-// "הרצה ראשונה טוענת הזמנות פתוחות וטווח זמן מוסכם בלבד" (סעיף 8.3)
+// "הרצה ראשונה טוענת הזמנות פתוחות וטווח זמן מוסכם בלבד" (סעיף 8.3).
+// "פתוחה" מוגדרת כאן כ-canceled=0 בטווח 14 הימים האחרונים — אפשר לכוונן
+// בהמשך לפי status_ID/tokef אם יתברר שצריך דיוק עסקי נוסף.
 async function fetchOpenOrders() {
   const p = await getPool();
   const headers = await p.request()
     .input('companyId', sql.Int, companyId)
     .input('sidra', sql.Int, sidra)
     .query(`
-      SELECT CompanyID, sidra, azmana_num,
-             -- TODO: לאמת שמות עמודות אלה מול הסכימה האמיתית של azmana_index
-             cust_name AS customer_name, order_date, delivery_date,
-             total_amount, notes, source_status
-      FROM azmana_index
-      WHERE CompanyID = @companyId AND sidra = @sidra
-        AND (source_status = 'open' OR order_date >= DATEADD(day, -14, GETDATE()))
+      SELECT h.CompanyID, h.sidra, h.azmana_num,
+             m.name AS customer_name,
+             h.dorder AS order_date,
+             h.sum AS total_amount,
+             h.canceled AS canceled
+      FROM azmana_index h
+      LEFT JOIN maazni m ON m.CompanyID = h.CompanyID AND m.maazni_ID = h.maazni_ID
+      WHERE h.CompanyID = @companyId AND h.sidra = @sidra
+        AND h.canceled = 0
+        AND h.dorder >= DATEADD(day, -14, GETDATE())
     `);
 
   const orders = [];
@@ -75,13 +81,15 @@ async function fetchOpenOrders() {
       .input('sidra', sql.Int, h.sidra)
       .input('orderNum', sql.Int, h.azmana_num)
       .query(`
-        SELECT pline AS lineNo, prit_ID AS itemCode, pname AS itemName, quant AS quantity, pprice AS price, location
+        SELECT pline AS lineNo, prit_ID AS itemCode, pname AS itemName, quant AS quantity, pprice AS price
         FROM azmanot WHERE CompanyID = @companyId AND sidra = @sidra AND azmana_num = @orderNum ORDER BY pline
       `);
     orders.push({
       companyId: h.CompanyID, sidra: h.sidra, orderNum: h.azmana_num,
-      customerName: h.customer_name, orderDate: h.order_date, deliveryDate: h.delivery_date,
-      totalAmount: h.total_amount, notes: h.notes, sourceStatus: h.source_status,
+      customerName: (h.customer_name || '').trim() || `לקוח ${h.azmana_num}`,
+      orderDate: h.order_date, deliveryDate: null,
+      totalAmount: h.total_amount, notes: null,
+      sourceStatus: h.canceled ? 'cancelled' : 'open',
       items: lines.recordset,
     });
   }
