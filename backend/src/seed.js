@@ -24,8 +24,8 @@ function run() {
   upsertUser({ user_id: uid('u'), username: 'manager', display_name: 'דנה (מנהלת מחסן)', password: '1234', role: 'warehouse_manager' });
   upsertUser({ user_id: uid('u'), username: 'admin', display_name: 'מנהל מערכת', password: '1234', role: 'system_admin' });
 
-  if (sigmaCfg.enabled) {
-    console.log('Sigma מוגדר (.env) — מדלג על הזמנות דמו, ה-Sigma Bridge האמיתי יסנכרן הזמנות אמיתיות.');
+  if (sigmaCfg.enabled || sigmaCfg.bridgeSecret) {
+    console.log('Sigma מחובר (pull או bridge) — מדלג על הזמנות דמו, ה-Sigma Bridge האמיתי יסנכרן הזמנות אמיתיות.');
   } else {
     seedOrders(db);
   }
