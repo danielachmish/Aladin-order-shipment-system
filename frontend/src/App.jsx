@@ -89,7 +89,7 @@ export default function App() {
         {openOrderKey ? (
           <OrderDetail user={user} orderKey={openOrderKey} onBack={() => setOpenOrderKey(null)} />
         ) : tab === 'dashboard' ? (
-          <Dashboard onOpenOrder={openOrder} />
+          <Dashboard user={user} onOpenOrder={openOrder} />
         ) : tab === 'orders' ? (
           <OrdersList user={user} onOpenOrder={openOrder} />
         ) : tab === 'exceptions' ? (

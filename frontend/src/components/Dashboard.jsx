@@ -15,13 +15,20 @@ function trend(today, yesterday) {
   return <span className={`kpi-trend ${up ? 'up' : 'down'}`}>{up ? '▲' : '▼'} {Math.abs(diff)} מאתמול</span>;
 }
 
-export default function Dashboard({ onOpenOrder }) {
+function firstName(name) {
+  if (!name) return '';
+  return name.split(' ')[0];
+}
+
+export default function Dashboard({ user, onOpenOrder }) {
   const [d, setD] = useState(null);
+  const [lastUpdated, setLastUpdated] = useState(null);
 
   async function load() {
     try {
       const data = await api.dashboard();
       setD(data);
+      setLastUpdated(new Date());
     } catch {
       // שקט: אם השרת עדיין לא עודכן, פשוט לא מציגים דשבורד
     }
@@ -40,7 +47,10 @@ export default function Dashboard({ onOpenOrder }) {
 
   return (
     <div>
-      <div className="section-title">דשבורד</div>
+      <div className="dashboard-greeting">
+        <div className="dashboard-greeting-text">שלום, {firstName(user?.name)} 👋</div>
+        {lastUpdated && <div className="dashboard-updated">עודכן לאחרונה: {lastUpdated.toLocaleTimeString('he-IL')}</div>}
+      </div>
 
       {attn > 0 && (
         <div className="admin-list-item" style={{ borderColor: '#c0392b' }}>
@@ -55,28 +65,28 @@ export default function Dashboard({ onOpenOrder }) {
 
       <div className="kpi-grid">
         <div className="kpi-card">
-          <div className="kpi-label">הזמנות פעילות כרגע</div>
+          <div className="kpi-label">📦 הזמנות פעילות כרגע</div>
           <div className="kpi-value">{activeTotal}</div>
         </div>
         <div className="kpi-card">
-          <div className="kpi-label">נסגרו היום</div>
+          <div className="kpi-label">✅ נסגרו היום</div>
           <div className="kpi-value">{d.closedToday}</div>
           {trend(d.closedToday, d.closedYesterday)}
         </div>
         <div className="kpi-card">
-          <div className="kpi-label">זמן ליקוט ממוצע (7 ימים)</div>
+          <div className="kpi-label">⏱️ זמן ליקוט ממוצע (7 ימים)</div>
           <div className="kpi-value">{d.avgPickMinutes != null ? `${d.avgPickMinutes} דק'` : '—'}</div>
         </div>
         <div className={'kpi-card' + (d.stuck.length > 0 ? ' alert' : '')}>
-          <div className="kpi-label">תקועות בליקוט מעל {d.stuckThresholdMinutes / 60} שעות</div>
+          <div className="kpi-label">⚠️ תקועות בליקוט מעל {d.stuckThresholdMinutes / 60} שעות</div>
           <div className="kpi-value">{d.stuck.length}</div>
         </div>
         <div className="kpi-card wide">
-          <div className="kpi-label">שווי כספי בצנרת (הזמנות פעילות)</div>
+          <div className="kpi-label">💰 שווי כספי בצנרת (הזמנות פעילות)</div>
           <div className="kpi-value">₪{Math.round(d.pipelineValue).toLocaleString('he-IL')}</div>
         </div>
         <div className="kpi-card wide">
-          <div className="kpi-label">עמידה ביעד — נסגר תוך 24 שעות (30 ימים, {d.slaSampleSize} הזמנות)</div>
+          <div className="kpi-label">🎯 עמידה ביעד — נסגר תוך 24 שעות (30 ימים, {d.slaSampleSize} הזמנות)</div>
           <div className="kpi-value">{d.slaPercent != null ? `${d.slaPercent}%` : 'אין עדיין נתונים'}</div>
         </div>
       </div>

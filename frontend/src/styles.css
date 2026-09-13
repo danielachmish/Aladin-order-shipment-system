@@ -253,6 +253,11 @@ textarea, select {
 .tl-label { font-size: 10px; color: var(--muted); margin-top: 4px; text-align: center; }
 .tl-step.current .tl-label { color: var(--teal); font-weight: 600; }
 
+/* ---------- כותרת ברכה בדשבורד (השראה: מסך הבית של UPS Ship) ---------- */
+.dashboard-greeting { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 12px; flex-wrap: wrap; gap: 4px; }
+.dashboard-greeting-text { font-size: 19px; font-weight: 700; }
+.dashboard-updated { font-size: 12px; color: var(--muted); }
+
 /* ---------- KPI cards (דשבורד מנהל) ---------- */
 .kpi-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 14px; }
 .kpi-card { background: #fff; border: 1px solid var(--border); border-radius: 12px; padding: 12px; }
