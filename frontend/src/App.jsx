@@ -101,7 +101,7 @@ export default function App() {
         ) : tab === 'shipments' ? (
           <Shipments onOpenOrder={openOrder} />
         ) : (
-          <ManagementTools onOpenOrder={openOrder} />
+          <ManagementTools />
         )}
       </div>
 

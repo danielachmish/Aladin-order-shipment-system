@@ -1,11 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api.js';
 import { onLive } from '../ws.js';
-
-const STATUS_LABELS = {
-  waiting_pick: 'ממתינות לליקוט', picking: 'בליקוט', ready_to_pack: 'באריזה',
-  waiting_pickup: 'ממתין לאיסוף', delivered_to_ups: 'נמסר ל-UPS',
-};
+import { shipLabel } from '../labels.js';
 
 function trend(today, yesterday) {
   if (yesterday === 0 && today === 0) return null;
@@ -20,14 +16,31 @@ function firstName(name) {
   return name.split(' ')[0];
 }
 
+const ACTIVE_SHIP_STATUSES = ['ship_sorting', 'ship_to_pickup_point', 'ship_waiting_pickup', 'ship_out_for_delivery', 'ship_exception', 'ship_unmapped'];
+
+// מסך בית של המנהל — לא רק KPI, אלא "חדר בקרה" מלא: חריגות, בקשות דחיפות
+// ומשלוחים פעילים כפאנלים ניתנים לפעולה, בהשראת מסך הבית של UPS Ship
+// ששלח דניאל (14.9.2026) — "שהמנהל יוכל להיות רק עליו ולהבין מה קורה".
 export default function Dashboard({ user, onOpenOrder }) {
   const [d, setD] = useState(null);
+  const [exceptions, setExceptions] = useState(null);
+  const [pendingUrgent, setPendingUrgent] = useState([]);
+  const [shipments, setShipments] = useState([]);
+  const [busy, setBusy] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(null);
 
   async function load() {
     try {
-      const data = await api.dashboard();
-      setD(data);
+      const [dash, exc, pu, ship] = await Promise.all([
+        api.dashboard(),
+        api.exceptions(),
+        api.pendingUrgent(),
+        api.shipments(),
+      ]);
+      setD(dash);
+      setExceptions(exc);
+      setPendingUrgent(pu.requests);
+      setShipments(ship.shipments);
       setLastUpdated(new Date());
     } catch {
       // שקט: אם השרת עדיין לא עודכן, פשוט לא מציגים דשבורד
@@ -36,14 +49,40 @@ export default function Dashboard({ user, onOpenOrder }) {
 
   useEffect(() => {
     load();
-    const off = onLive((evt) => { if (evt.type === 'order' || evt.type === 'urgent_request') load(); });
+    const off = onLive((evt) => {
+      if (['order', 'urgent_request', 'shipment'].includes(evt.type)) load();
+    });
     return off;
   }, []);
+
+  async function decide(id, approve) {
+    setBusy(true);
+    try {
+      await api.decideUrgent(id, approve);
+      await load();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function resolveLink(id) {
+    setBusy(true);
+    try {
+      await api.resolveLinkException(id);
+      await load();
+    } finally {
+      setBusy(false);
+    }
+  }
 
   if (!d) return null;
 
   const activeTotal = Object.values(d.counts).reduce((a, b) => a + b, 0);
-  const attn = d.needsAttention.pendingUrgent + d.needsAttention.onHoldCount + d.needsAttention.linkExceptionsCount;
+  const onHold = exceptions?.onHold || [];
+  const linkExceptions = exceptions?.linkExceptions || [];
+  const shipmentExceptions = exceptions?.shipmentExceptions || [];
+  const activeShipments = shipments.filter((s) => ACTIVE_SHIP_STATUSES.includes(s.status));
+  const exceptionsTotal = onHold.length + linkExceptions.length + shipmentExceptions.length;
 
   return (
     <div>
@@ -51,17 +90,6 @@ export default function Dashboard({ user, onOpenOrder }) {
         <div className="dashboard-greeting-text">שלום, {firstName(user?.name)} 👋</div>
         {lastUpdated && <div className="dashboard-updated">עודכן לאחרונה: {lastUpdated.toLocaleTimeString('he-IL')}</div>}
       </div>
-
-      {attn > 0 && (
-        <div className="admin-list-item" style={{ borderColor: '#c0392b' }}>
-          <div className="top"><b style={{ color: '#c0392b' }}>דורש החלטה שלך עכשיו</b></div>
-          <div className="meta">
-            {d.needsAttention.pendingUrgent > 0 && <div>🔴 {d.needsAttention.pendingUrgent} בקשות דחיפות ממתינות</div>}
-            {d.needsAttention.onHoldCount > 0 && <div>🔴 {d.needsAttention.onHoldCount} הזמנות מעוכבות</div>}
-            {d.needsAttention.linkExceptionsCount > 0 && <div>🔴 {d.needsAttention.linkExceptionsCount} חריגות קישור UPS</div>}
-          </div>
-        </div>
-      )}
 
       <div className="kpi-grid">
         <div className="kpi-card">
@@ -91,21 +119,118 @@ export default function Dashboard({ user, onOpenOrder }) {
         </div>
       </div>
 
+      {/* ---- בקשות דחיפות ממתינות ---- */}
+      <div className="settings-card">
+        <div className="settings-card-title">🔴 בקשות דחיפות ממתינות {pendingUrgent.length > 0 && `(${pendingUrgent.length})`}</div>
+        {pendingUrgent.length === 0 && <div className="empty-state">אין בקשות ממתינות</div>}
+        {pendingUrgent.map((r) => (
+          <div className="admin-list-item" key={r.request_id}>
+            <div className="top" onClick={() => onOpenOrder(r.order_key)} style={{ cursor: 'pointer' }}>
+              <b>הזמנה {r.order_num}</b>
+              <span className="meta">{r.customer_name}</span>
+            </div>
+            <div className="meta">סוכן: {r.agent_name} · {new Date(r.created_at).toLocaleString('he-IL')}</div>
+            <div className="actions">
+              <button className="btn-approve" disabled={busy} onClick={() => decide(r.request_id, true)}>אשר דחיפות</button>
+              <button className="btn-reject" disabled={busy} onClick={() => decide(r.request_id, false)}>דחה</button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* ---- חריגות ---- */}
+      <div className="settings-card">
+        <div className="settings-card-title">⚠️ חריגות {exceptionsTotal > 0 && `(${exceptionsTotal})`}</div>
+        {exceptionsTotal === 0 && <div className="empty-state">אין חריגות כרגע 🎉</div>}
+
+        {onHold.length > 0 && (
+          <>
+            <div className="meta" style={{ fontWeight: 'bold', marginBottom: 4 }}>הזמנות מעוכבות</div>
+            {onHold.map((o) => (
+              <div className="admin-list-item" key={o.order_key} onClick={() => onOpenOrder(o.order_key)} style={{ cursor: 'pointer' }}>
+                <div className="top"><b>הזמנה {o.order_num}</b><span className="meta">{o.customer_name}</span></div>
+                <div className="meta" style={{ color: '#c0392b' }}>{o.hold_reason}</div>
+              </div>
+            ))}
+          </>
+        )}
+
+        {linkExceptions.length > 0 && (
+          <>
+            <div className="meta" style={{ fontWeight: 'bold', margin: '10px 0 4px' }}>חריגות קישור UPS (אסמכתא שגויה)</div>
+            {linkExceptions.map((le) => (
+              <div className="admin-list-item" key={le.exception_id}>
+                <div className="top">
+                  <b>שטר {le.track_no}</b>
+                  <span className="meta">{new Date(le.created_at).toLocaleString('he-IL')}</span>
+                </div>
+                <div className="meta">מספר לא תקין: {le.bad_ref} — {le.reason}</div>
+                <div className="actions">
+                  <button className="btn-approve" disabled={busy} onClick={() => resolveLink(le.exception_id)}>סמן כטופל</button>
+                </div>
+              </div>
+            ))}
+          </>
+        )}
+
+        {shipmentExceptions.length > 0 && (
+          <>
+            <div className="meta" style={{ fontWeight: 'bold', margin: '10px 0 4px' }}>חריגות משלוח UPS</div>
+            {shipmentExceptions.map((s) => (
+              <div className="admin-list-item" key={s.track_no}>
+                <div className="top">
+                  <b>{s.track_no}</b>
+                  <span className={`badge ship-${s.status}`}>{shipLabel(s.status)}</span>
+                </div>
+                {s.exception_desc_heb && <div className="meta" style={{ color: '#c0392b' }}>{s.exception_desc_heb}</div>}
+              </div>
+            ))}
+          </>
+        )}
+      </div>
+
+      {/* ---- משלוחים פעילים ---- */}
+      <div className="settings-card">
+        <div className="settings-card-title">🚚 משלוחים פעילים {activeShipments.length > 0 && `(${activeShipments.length})`}</div>
+        {activeShipments.length === 0 && <div className="empty-state">אין משלוחים פעילים כרגע</div>}
+        {activeShipments.map((s) => (
+          <div className="admin-list-item" key={s.track_no}>
+            <div className="top">
+              <b>{s.track_no}</b>
+              <span className={`badge ship-${s.status}`}>{shipLabel(s.status)}</span>
+            </div>
+            {s.status_desc_heb && <div className="meta">{s.status_desc_heb}</div>}
+            {s.estimate_delivery && <div className="meta">צפי מסירה: {new Date(s.estimate_delivery).toLocaleString('he-IL')}</div>}
+            {s.orders?.length > 0 && (
+              <div className="meta">
+                הזמנות:{' '}
+                {s.orders.map((o, i) => (
+                  <span key={o.order_key}>
+                    {i > 0 && ', '}
+                    <a href="#" onClick={(e) => { e.preventDefault(); onOpenOrder(o.order_key); }}>{o.order_num}</a>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
       {d.stuck.length > 0 && (
-        <>
-          <div className="section-title">הזמנות תקועות בליקוט</div>
+        <div className="settings-card">
+          <div className="settings-card-title">🐢 הזמנות תקועות בליקוט</div>
           {d.stuck.map((o) => (
             <div className="admin-list-item" key={o.order_key} onClick={() => onOpenOrder(o.order_key)} style={{ cursor: 'pointer' }}>
               <div className="top"><b>הזמנה {o.order_num}</b><span className="meta">{o.customer_name}</span></div>
               <div className="meta" style={{ color: '#c0392b' }}>{Math.round(o.minutes_in_status / 60 * 10) / 10} שעות בליקוט</div>
             </div>
           ))}
-        </>
+        </div>
       )}
 
       {d.byAgent.length > 0 && (
-        <>
-          <div className="section-title">פילוח לפי סוכן</div>
+        <div className="settings-card">
+          <div className="settings-card-title">👤 פילוח לפי סוכן</div>
           <div style={{ overflowX: 'auto' }}>
             <table className="agent-table">
               <thead>
@@ -122,7 +247,7 @@ export default function Dashboard({ user, onOpenOrder }) {
               </tbody>
             </table>
           </div>
-        </>
+        </div>
       )}
     </div>
   );
