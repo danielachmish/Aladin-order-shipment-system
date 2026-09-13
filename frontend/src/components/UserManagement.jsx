@@ -46,6 +46,20 @@ export default function UserManagement() {
     }
   }
 
+  async function deleteUser(u) {
+    if (!window.confirm(`למחוק לצמיתות את המשתמש "${u.display_name}" (${u.username})? לא ניתן לשחזר.`)) return;
+    setBusy(true);
+    setError('');
+    try {
+      await api.deleteUser(u.user_id);
+      await load();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function toggleActive(u) {
     setBusy(true);
     setError('');
@@ -108,6 +122,7 @@ export default function UserManagement() {
             <button className={u.is_active ? 'btn-reject' : 'btn-approve'} disabled={busy} onClick={() => toggleActive(u)}>
               {u.is_active ? 'השבתה' : 'הפעלה מחדש'}
             </button>
+            <button className="btn-reject" disabled={busy} onClick={() => deleteUser(u)}>מחיקה לצמיתות</button>
           </div>
           {!u.is_active && <div className="meta" style={{ color: '#c0392b' }}>משתמש מושבת — לא יכול להתחבר</div>}
         </div>

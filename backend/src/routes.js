@@ -566,4 +566,20 @@ router.put('/users/:id', requireRole('warehouse_manager', 'system_admin'), (req,
   res.json({ ok: true, user: updated });
 });
 
+// מחיקה אמיתית (לא רק השבתה) — לניקוי משתמשי הדמו הראשוניים. שומרים על לפחות
+// מנהל מערכת פעיל אחד כדי לא לנעול את המערכת החוצה.
+router.delete('/users/:id', requireRole('warehouse_manager', 'system_admin'), (req, res) => {
+  const { id } = req.params;
+  const existing = db.prepare('SELECT * FROM users WHERE user_id = ?').get(id);
+  if (!existing) return res.status(404).json({ error: 'משתמש לא נמצא' });
+
+  if (existing.role === 'system_admin') {
+    const activeAdmins = db.prepare(`SELECT COUNT(*) AS c FROM users WHERE role = 'system_admin' AND is_active = 1`).get().c;
+    if (activeAdmins <= 1) return res.status(400).json({ error: 'לא ניתן למחוק את מנהל המערכת האחרון' });
+  }
+
+  db.prepare('DELETE FROM users WHERE user_id = ?').run(id);
+  res.json({ ok: true });
+});
+
 module.exports = router;
