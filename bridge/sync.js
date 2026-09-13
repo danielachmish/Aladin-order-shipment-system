@@ -32,7 +32,13 @@ if (!instanceName) {
   cfg.port = Number(process.env.SIGMA_SQL_PORT || 1433);
 }
 const companyId = Number(process.env.SIGMA_COMPANY_ID || 3);
-const sidra = Number(process.env.SIGMA_SIDRA || 0);
+// גילינו ב-13.9.2026 שיש בסיגמא כמה "סדרות" (sidra) של הזמנות רגילות באותה
+// חברה (למשל 0 ו-99) — לא רק סדרה אחת. סינון קשיח ל-sidra יחיד החסיר הזמנות
+// אמיתיות מהתור. לכן כברירת מחדל שולפים את כל הסדרות של החברה (בלי סינון
+// sidra כלל). אם בעתיד תרצו להגביל לרשימה ספציפית, אפשר למלא SIGMA_SIDRAS
+// (רשימה מופרדת בפסיקים, למשל "0,99") — ריק = כל הסדרות.
+const sidraFilter = (process.env.SIGMA_SIDRAS || '').trim();
+const allowedSidras = sidraFilter ? sidraFilter.split(',').map((s) => Number(s.trim())) : null;
 const targetUrl = process.env.BRIDGE_TARGET_URL;
 const bridgeSecret = process.env.SIGMA_BRIDGE_SECRET;
 const intervalMs = Number(process.env.SYNC_INTERVAL_MS || 45000);
@@ -77,7 +83,6 @@ async function fetchOpenOrders() {
   const p = await getPool();
   const headers = await p.request()
     .input('companyId', sql.Int, companyId)
-    .input('sidra', sql.Int, sidra)
     .query(`
       SELECT h.CompanyID, h.sidra, h.azmana_num,
              m.name AS [customer_name],
@@ -89,7 +94,9 @@ async function fetchOpenOrders() {
       FROM azmana_index h
       LEFT JOIN maazni m ON m.CompanyID = h.CompanyID AND m.maazni_ID = h.maazni_ID
       LEFT JOIN t_agents ag ON ag.agent_ID = h.agent_ID
-      WHERE h.CompanyID = @companyId AND h.sidra = @sidra
+      WHERE h.CompanyID = @companyId
+        -- הוסר סינון sidra יחיד — יש כמה סדרות הזמנות רגילות (0, 99, ...).
+        -- אם הוגדר SIGMA_SIDRAS בסביבה, מסננים בקוד למטה לפי הרשימה.
         AND h.canceled = 0
         AND h.status_ID = 6
         -- אומת מול הזמנה 54464 (10.9.2026): אם כל השורות tquan=0, ההזמנה כבר
@@ -102,8 +109,19 @@ async function fetchOpenOrders() {
         AND h.dorder >= DATEADD(day, -30, GETDATE())
     `);
 
+  const filteredHeaders = allowedSidras
+    ? headers.recordset.filter((h) => allowedSidras.includes(h.sidra))
+    : headers.recordset;
+
+  // כל הסדרות הקיימות בפועל אצל החברה — נדרש כדי לדעת אילו סדרות לנקות
+  // (reconcile) גם אם ברגע זה אין בהן אף הזמנה פתוחה (כלומר כולן נסגרו).
+  const allSidraRows = await p.request()
+    .input('companyId', sql.Int, companyId)
+    .query(`SELECT DISTINCT sidra FROM azmana_index WHERE CompanyID = @companyId`);
+  const knownSidras = allowedSidras || allSidraRows.recordset.map((r) => r.sidra);
+
   const orders = [];
-  for (const h of headers.recordset) {
+  for (const h of filteredHeaders) {
     const lines = await p.request()
       .input('companyId', sql.Int, h.CompanyID)
       .input('sidra', sql.Int, h.sidra)
@@ -122,7 +140,7 @@ async function fetchOpenOrders() {
       items: lines.recordset,
     });
   }
-  return orders;
+  return { orders, knownSidras };
 }
 
 const BATCH_SIZE = 50; // דוחפים בחבילות קטנות כדי לא לחרוג ממגבלת גודל בקשה
@@ -151,16 +169,34 @@ async function pushOrders(orders) {
 
 // סוגר אוטומטית בענן הזמנות "ממתינות לליקוט" שכבר לא ברשימת ה-orders הנוכחית
 // (למשל שורשרו במלואה לחשבונית, בוטלו, או חזרו סטטוס). לא נוגע בהזמנות בעבודה.
+// מאז שביטלנו סינון sidra יחיד, ה-orders עשויים להשתייך למספר סדרות — מריצים
+// ניקוי בנפרד לכל סדרה (אחרת "מנקים" בטעות הזמנות מסדרה שלא סונכרנה בכלל בסבב הזה).
 const reconcileUrl = targetUrl.replace(/\/sigma-sync$/, '/sigma-sync/reconcile');
-async function reconcile(orders) {
-  const validOrderNums = orders.map((o) => o.orderNum);
-  const res = await fetch(reconcileUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${bridgeSecret}` },
-    body: JSON.stringify({ companyId, sidra, validOrderNums }),
-  });
-  if (!res.ok) throw new Error(`ניקוי נכשל: ${res.status} ${await res.text()}`);
-  return res.json();
+async function reconcile(orders, knownSidras) {
+  const bySidra = new Map();
+  for (const o of orders) {
+    if (!bySidra.has(o.sidra)) bySidra.set(o.sidra, []);
+    bySidra.get(o.sidra).push(o.orderNum);
+  }
+  // גם אם אין הזמנות פתוחות באחת הסדרות הידועות בסבב הזה (כולן נסגרו/שורשרו),
+  // עדיין צריך לנקות אותה — לא רק סדרות שיש בהן כרגע הזמנות פתוחות.
+  for (const s of knownSidras || []) {
+    if (!bySidra.has(s)) bySidra.set(s, []);
+  }
+
+  let totalChecked = 0, totalClosed = 0;
+  for (const [s, validOrderNums] of bySidra) {
+    const res = await fetch(reconcileUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${bridgeSecret}` },
+      body: JSON.stringify({ companyId, sidra: s, validOrderNums }),
+    });
+    if (!res.ok) throw new Error(`ניקוי נכשל (סדרה ${s}): ${res.status} ${await res.text()}`);
+    const r = await res.json();
+    totalChecked += r.checked || 0;
+    totalClosed += r.closed || 0;
+  }
+  return { checked: totalChecked, closed: totalClosed };
 }
 
 async function tick() {
@@ -174,10 +210,10 @@ async function tick() {
   if (!active) return;
 
   try {
-    const orders = await fetchOpenOrders();
+    const { orders, knownSidras } = await fetchOpenOrders();
     const result = await pushOrders(orders);
-    const recon = await reconcile(orders);
-    log(`סונכרנו ${orders.length} הזמנות ->`, result, `| ניקוי: ${recon.closed} נסגרו מתוך ${recon.checked} שנבדקו`);
+    const recon = await reconcile(orders, knownSidras);
+    log(`סונכרנו ${orders.length} הזמנות (סדרות: ${knownSidras.join(',')}) ->`, result, `| ניקוי: ${recon.closed} נסגרו מתוך ${recon.checked} שנבדקו`);
   } catch (e) {
     log('שגיאת סנכרון:', e.message);
   }
