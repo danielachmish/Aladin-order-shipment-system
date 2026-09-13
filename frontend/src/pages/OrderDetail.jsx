@@ -16,6 +16,8 @@ export default function OrderDetail({ user, orderKey, onBack }) {
   const [showHistory, setShowHistory] = useState(false);
   const [showAddition, setShowAddition] = useState(false);
   const [additionNote, setAdditionNote] = useState('');
+  const [showCancel, setShowCancel] = useState(false);
+  const [cancelNote, setCancelNote] = useState('');
 
   async function load() {
     try {
@@ -117,6 +119,10 @@ export default function OrderDetail({ user, orderKey, onBack }) {
           ) : (
             <button className="action-btn secondary" disabled={busy} onClick={() => setShowAddition(true)}>תוספת בדרך</button>
           )}
+
+          {isManager && (
+            <button className="action-btn danger" disabled={busy} onClick={() => setShowCancel(true)}>ביטול הזמנה</button>
+          )}
         </div>
       )}
 
@@ -181,14 +187,9 @@ export default function OrderDetail({ user, orderKey, onBack }) {
       )}
 
       {/* ---- פעולות מנהל ---- */}
-      {/* שחרור חסימה: גם מחסן רגיל (לא רק מנהל) — ביטול מלא נשאר למנהל בלבד */}
+      {/* שחרור חסימה: גם מחסן רגיל (לא רק מנהל). ביטול מלא — כפתור "ביטול הזמנה" בבאנר למעלה, מנהל בלבד */}
       {(isWarehouse || user.role === 'system_admin') && order.status === 'on_hold' && (
-        <div className="btn-row">
-          <button className="action-btn" disabled={busy} onClick={() => act(() => api.releaseHold(orderKey))}>שחרור חסימה</button>
-          {isManager && (
-            <button className="action-btn danger" disabled={busy} onClick={() => act(() => api.cancelOrder(orderKey, 'בוטל על ידי מנהל'))}>ביטול הזמנה</button>
-          )}
-        </div>
+        <button className="action-btn" disabled={busy} onClick={() => act(() => api.releaseHold(orderKey))}>שחרור חסימה</button>
       )}
 
       {isManager && order.status === 'waiting_pick' && (
@@ -275,6 +276,28 @@ export default function OrderDetail({ user, orderKey, onBack }) {
               שמירה
             </button>
             <button className="action-btn secondary" onClick={() => setShowAddition(false)}>ביטול</button>
+          </div>
+        </div>
+      )}
+
+      {showCancel && (
+        <div className="modal-backdrop" onClick={() => setShowCancel(false)}>
+          <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+            <h3>ביטול הזמנה</h3>
+            <div className="meta" style={{ marginBottom: 8 }}>פעולה סופית — נא לציין סיבה.</div>
+            <textarea placeholder="סיבת הביטול (חובה)" rows={3} value={cancelNote} onChange={(e) => setCancelNote(e.target.value)} />
+            <button
+              className="action-btn danger"
+              disabled={busy || !cancelNote.trim()}
+              onClick={() => act(async () => {
+                await api.cancelOrder(orderKey, cancelNote.trim());
+                setShowCancel(false);
+                setCancelNote('');
+              })}
+            >
+              אישור ביטול
+            </button>
+            <button className="action-btn secondary" onClick={() => setShowCancel(false)}>סגירה</button>
           </div>
         </div>
       )}
