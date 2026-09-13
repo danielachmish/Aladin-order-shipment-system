@@ -80,6 +80,10 @@ export const api = {
   pendingOrders: () => request('/pending-orders'),
   shipments: () => request('/shipments'),
 
+  listUsers: () => request('/users'),
+  createUser: (data) => request('/users', { method: 'POST', body: JSON.stringify(data) }),
+  updateUser: (id, data) => request(`/users/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(data) }),
+
   getAgentViewScope: () => request('/settings/agent-view-scope'),
   setAgentViewScope: (scope) => request('/settings/agent-view-scope', { method: 'POST', body: JSON.stringify({ scope }) }),
 

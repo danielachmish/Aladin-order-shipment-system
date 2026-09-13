@@ -1,4 +1,5 @@
 const express = require('express');
+const crypto = require('crypto');
 const { db } = require('./db');
 const { login, authMiddleware, requireRole } = require('./auth');
 const wf = require('./workflow');
@@ -516,6 +517,53 @@ router.post('/admin/sigma-test/:companyId/:sidra/:num', requireRole('system_admi
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
+});
+
+// ---------- ניהול משתמשים (מנהל בלבד) ----------
+// MOCK: סיסמאות טקסט-גלוי בהתאם לשאר המערכת (ר' seed.js/auth.js) — לא לפרודקשן אמיתי.
+const VALID_ROLES = ['agent', 'warehouse', 'warehouse_manager', 'system_admin'];
+
+router.get('/users', requireRole('warehouse_manager', 'system_admin'), (req, res) => {
+  const rows = db.prepare(`SELECT user_id, username, display_name, role, is_active, created_at FROM users ORDER BY created_at ASC`).all();
+  res.json({ users: rows });
+});
+
+router.post('/users', requireRole('warehouse_manager', 'system_admin'), (req, res) => {
+  const { username, display_name, password, role } = req.body || {};
+  if (!username || !display_name || !password || !role) {
+    return res.status(400).json({ error: 'חסרים שדות חובה (שם משתמש, שם, סיסמה, תפקיד)' });
+  }
+  if (!VALID_ROLES.includes(role)) return res.status(400).json({ error: 'תפקיד לא תקין' });
+  try {
+    const user_id = `u_${crypto.randomBytes(6).toString('hex')}`;
+    db.prepare(`INSERT INTO users (user_id, username, display_name, password, role) VALUES (?, ?, ?, ?, ?)`)
+      .run(user_id, username, display_name, password, role);
+    res.json({ ok: true, user: { user_id, username, display_name, role, is_active: 1 } });
+  } catch (e) {
+    if (String(e.message).includes('UNIQUE')) return res.status(400).json({ error: 'שם המשתמש כבר תפוס' });
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.put('/users/:id', requireRole('warehouse_manager', 'system_admin'), (req, res) => {
+  const { id } = req.params;
+  const existing = db.prepare('SELECT * FROM users WHERE user_id = ?').get(id);
+  if (!existing) return res.status(404).json({ error: 'משתמש לא נמצא' });
+
+  const { display_name, password, role, is_active } = req.body || {};
+  if (role && !VALID_ROLES.includes(role)) return res.status(400).json({ error: 'תפקיד לא תקין' });
+
+  db.prepare(`
+    UPDATE users SET
+      display_name = COALESCE(?, display_name),
+      password = COALESCE(?, password),
+      role = COALESCE(?, role),
+      is_active = COALESCE(?, is_active)
+    WHERE user_id = ?
+  `).run(display_name || null, password || null, role || null, is_active === undefined ? null : (is_active ? 1 : 0), id);
+
+  const updated = db.prepare(`SELECT user_id, username, display_name, role, is_active, created_at FROM users WHERE user_id = ?`).get(id);
+  res.json({ ok: true, user: updated });
 });
 
 module.exports = router;
