@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api.js';
 import { onLive } from '../ws.js';
-import { shipLabel } from '../labels.js';
+import { shipLabel, statusLabel, priorityLabel } from '../labels.js';
 
 function trend(today, yesterday) {
   if (yesterday === 0 && today === 0) return null;
@@ -26,21 +26,24 @@ export default function Dashboard({ user, onOpenOrder }) {
   const [exceptions, setExceptions] = useState(null);
   const [pendingUrgent, setPendingUrgent] = useState([]);
   const [shipments, setShipments] = useState([]);
+  const [orders, setOrders] = useState([]);
   const [busy, setBusy] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(null);
 
   async function load() {
     try {
-      const [dash, exc, pu, ship] = await Promise.all([
+      const [dash, exc, pu, ship, ord] = await Promise.all([
         api.dashboard(),
         api.exceptions(),
         api.pendingUrgent(),
         api.shipments(),
+        api.listOrders({}),
       ]);
       setD(dash);
       setExceptions(exc);
       setPendingUrgent(pu.requests);
       setShipments(ship.shipments);
+      setOrders(ord.orders);
       setLastUpdated(new Date());
     } catch {
       // שקט: אם השרת עדיין לא עודכן, פשוט לא מציגים דשבורד
@@ -82,6 +85,10 @@ export default function Dashboard({ user, onOpenOrder }) {
   const linkExceptions = exceptions?.linkExceptions || [];
   const shipmentExceptions = exceptions?.shipmentExceptions || [];
   const activeShipments = shipments.filter((s) => ACTIVE_SHIP_STATUSES.includes(s.status));
+  const activeOrders = orders
+    .filter((o) => !['closed', 'cancelled'].includes(o.status))
+    .sort((a, b) => (a.queue_position ? a.queue_position.position : Infinity) - (b.queue_position ? b.queue_position.position : Infinity))
+    .slice(0, 12);
   const exceptionsTotal = onHold.length + linkExceptions.length + shipmentExceptions.length;
 
   return (
@@ -117,6 +124,35 @@ export default function Dashboard({ user, onOpenOrder }) {
           <div className="kpi-label">🎯 עמידה ביעד — נסגר תוך 24 שעות (30 ימים, {d.slaSampleSize} הזמנות)</div>
           <div className="kpi-value">{d.slaPercent != null ? `${d.slaPercent}%` : 'אין עדיין נתונים'}</div>
         </div>
+      </div>
+
+      {/* ---- הזמנות פעילות ---- */}
+      <div className="settings-card">
+        <div className="settings-card-title">📦 הזמנות פעילות {activeTotal > 0 && `(${activeTotal})`}</div>
+        {activeOrders.length === 0 && <div className="empty-state">אין הזמנות פעילות כרגע</div>}
+        {activeOrders.length > 0 && (
+          <div style={{ overflowX: 'auto' }}>
+            <table className="agent-table">
+              <thead>
+                <tr><th>הזמנה</th><th>לקוח</th><th>סטטוס</th><th>עדיפות</th><th>סוכן</th></tr>
+              </thead>
+              <tbody>
+                {activeOrders.map((o) => (
+                  <tr key={o.order_key} onClick={() => onOpenOrder(o.order_key)} style={{ cursor: 'pointer' }}>
+                    <td>{o.order_num}</td>
+                    <td>{o.customer_name}</td>
+                    <td><span className={`badge status-${o.status}`}>{statusLabel(o.status)}</span></td>
+                    <td>{o.priority !== 'normal' ? priorityLabel(o.priority) : '—'}</td>
+                    <td>{o.agent_name || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {orders.length > activeOrders.length && (
+              <div className="meta" style={{ marginTop: 6 }}>מוצגות {activeOrders.length} מתוך {activeTotal} הזמנות פעילות</div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* ---- בקשות דחיפות ממתינות ---- */}
