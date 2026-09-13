@@ -74,6 +74,7 @@ export const api = {
   },
 
   dashboard: () => request('/dashboard'),
+  pendingOrders: () => request('/pending-orders'),
 
   getAgentViewScope: () => request('/settings/agent-view-scope'),
   setAgentViewScope: (scope) => request('/settings/agent-view-scope', { method: 'POST', body: JSON.stringify({ scope }) }),

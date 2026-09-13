@@ -89,6 +89,46 @@ router.post('/admin/sigma-sync/reconcile', express.json({ limit: '1mb' }), (req,
   }
 });
 
+// ---------- הזמנות "ממתינות לאישור" (status_ID=0 — עדיין אצל המזכירה) ----------
+// תצוגה בלבד, לא חלק מתור הליקוט. אותו דפוס אימות כמו שאר ה-Sigma Bridge.
+router.post('/admin/sigma-sync/pending', express.json({ limit: '10mb' }), (req, res) => {
+  if (!sigmaCfg.bridgeSecret) {
+    return res.status(400).json({ error: 'SIGMA_BRIDGE_SECRET לא מוגדר בשרת' });
+  }
+  const header = req.headers.authorization || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+  if (token !== sigmaCfg.bridgeSecret) {
+    return res.status(401).json({ error: 'אימות Sigma Bridge נכשל' });
+  }
+  try {
+    const orders = req.body?.orders;
+    if (!Array.isArray(orders)) return res.status(400).json({ error: 'שדה orders חסר או לא מערך' });
+    const result = sigmaIngest.ingestPendingOrders(orders);
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.post('/admin/sigma-sync/pending/reconcile', express.json({ limit: '1mb' }), (req, res) => {
+  if (!sigmaCfg.bridgeSecret) {
+    return res.status(400).json({ error: 'SIGMA_BRIDGE_SECRET לא מוגדר בשרת' });
+  }
+  const header = req.headers.authorization || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+  if (token !== sigmaCfg.bridgeSecret) {
+    return res.status(401).json({ error: 'אימות Sigma Bridge נכשל' });
+  }
+  try {
+    const { companyId, sidra, validOrderNums } = req.body || {};
+    if (!Array.isArray(validOrderNums)) return res.status(400).json({ error: 'שדה validOrderNums חסר או לא מערך' });
+    const result = sigmaIngest.reconcilePendingOrders(companyId, sidra, validOrderNums);
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // תיקון-חירום: שחזור הזמנות שנסגרו בטעות ע"י קריאת reconcile שגויה (לא נשלחת
 // כחלק מהזרימה הרגילה — נשארת כאן לשימוש נקודתי במקרה חירום דומה בעתיד).
 router.post('/admin/sigma-sync/undo-closures', express.json({ limit: '1mb' }), (req, res) => {
@@ -381,6 +421,18 @@ router.get('/history', requireRole('warehouse', 'warehouse_manager', 'system_adm
   });
 
   res.json({ orders: result, sinceDays });
+});
+
+// הזמנות status_ID=0 ("ללא סטטוס" — עדיין אצל המזכירה, לא בתור הליקוט).
+// תצוגה בלבד: מנהל מערכת, מנהל מחסן, וסוכנים (לדעת מה מגיע בהמשך) — לא צוות
+// המחסן השוטף, שאין לו מה לעשות עם הזמנה שעוד לא הודפסה.
+router.get('/pending-orders', requireRole('agent', 'warehouse_manager', 'system_admin'), (req, res) => {
+  const rows = db.prepare(`
+    SELECT order_key, order_num, customer_name, order_date, sigma_created_at, total_amount, sigma_agent_name AS agent_name
+    FROM pending_orders_cache
+    ORDER BY COALESCE(sigma_created_at, order_date) ASC
+  `).all();
+  res.json({ orders: rows });
 });
 
 // ---------- מצב חיבורים (סעיף 3.5 "מצב שירותים") ----------

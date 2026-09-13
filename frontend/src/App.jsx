@@ -4,6 +4,7 @@ import OrdersList from './pages/OrdersList.jsx';
 import OrderDetail from './pages/OrderDetail.jsx';
 import Exceptions from './pages/Exceptions.jsx';
 import History from './pages/History.jsx';
+import PendingOrders from './pages/PendingOrders.jsx';
 import Admin from './pages/Admin.jsx';
 import { getToken, getUser, clearSession } from './api.js';
 import { roleLabel } from './labels.js';
@@ -50,6 +51,8 @@ export default function App() {
 
   const isManager = user.role === 'warehouse_manager' || user.role === 'system_admin';
   const canSeeHistory = user.role === 'warehouse' || isManager;
+  // ממתינות לאישור: מנהל, מנהל מחסן, וסוכנים — לא צוות המחסן השוטף (סעיף בקשת דניאל, 14.9.2026)
+  const canSeePending = user.role === 'agent' || isManager;
 
   function openOrder(key) {
     setOpenOrderKey(key);
@@ -82,6 +85,8 @@ export default function App() {
           <Exceptions user={user} onOpenOrder={openOrder} />
         ) : tab === 'history' ? (
           <History onOpenOrder={openOrder} />
+        ) : tab === 'pending' ? (
+          <PendingOrders />
         ) : (
           <Admin user={user} onOpenOrder={openOrder} />
         )}
@@ -98,6 +103,11 @@ export default function App() {
           {canSeeHistory && (
             <button className={tab === 'history' ? 'active' : ''} onClick={() => setTab('history')}>
               <span className="icon">🕒</span>היסטוריה
+            </button>
+          )}
+          {canSeePending && (
+            <button className={tab === 'pending' ? 'active' : ''} onClick={() => setTab('pending')}>
+              <span className="icon">⏳</span>ממתינות
             </button>
           )}
           {isManager && (

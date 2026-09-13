@@ -143,6 +143,75 @@ async function fetchOpenOrders() {
   return { orders, knownSidras };
 }
 
+// הזמנות status_ID=0 ("ללא סטטוס" — עדיין אצל המזכירה, לא הודפסו). נשלפות
+// בנפרד לתצוגה בלבד (לא נכנסות לתור הליקוט) — ר' bridge/sync.js תיעוד מעלה.
+async function fetchPendingOrders() {
+  const p = await getPool();
+  const headers = await p.request()
+    .input('companyId', sql.Int, companyId)
+    .query(`
+      SELECT h.CompanyID, h.sidra, h.azmana_num,
+             m.name AS [customer_name],
+             h.dorder AS [order_date],
+             h.FCreateDate AS [created_at],
+             h.sum AS [total_amount],
+             ag.agent_name AS [agent_name]
+      FROM azmana_index h
+      LEFT JOIN maazni m ON m.CompanyID = h.CompanyID AND m.maazni_ID = h.maazni_ID
+      LEFT JOIN t_agents ag ON ag.agent_ID = h.agent_ID
+      WHERE h.CompanyID = @companyId
+        AND h.canceled = 0
+        AND h.status_ID = 0
+        AND h.dorder >= DATEADD(day, -30, GETDATE())
+    `);
+
+  const filteredHeaders = allowedSidras
+    ? headers.recordset.filter((h) => allowedSidras.includes(h.sidra))
+    : headers.recordset;
+
+  return filteredHeaders.map((h) => ({
+    companyId: h.CompanyID, sidra: h.sidra, orderNum: h.azmana_num,
+    customerName: (h.customer_name || '').trim() || `לקוח ${h.azmana_num}`,
+    agentName: (h.agent_name || '').trim() || null,
+    orderDate: h.order_date, createdAt: h.created_at, totalAmount: h.total_amount,
+  }));
+}
+
+async function pushPending(orders) {
+  const res = await fetch(targetUrl.replace(/\/sigma-sync$/, '/sigma-sync/pending'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${bridgeSecret}` },
+    body: JSON.stringify({ orders }),
+  });
+  if (!res.ok) throw new Error(`דחיפת ממתינות נכשלה: ${res.status} ${await res.text()}`);
+  return res.json();
+}
+
+async function reconcilePending(orders, knownSidras) {
+  const bySidra = new Map();
+  for (const o of orders) {
+    if (!bySidra.has(o.sidra)) bySidra.set(o.sidra, []);
+    bySidra.get(o.sidra).push(o.orderNum);
+  }
+  for (const s of knownSidras || []) {
+    if (!bySidra.has(s)) bySidra.set(s, []);
+  }
+  const url = targetUrl.replace(/\/sigma-sync$/, '/sigma-sync/pending/reconcile');
+  let totalChecked = 0, totalRemoved = 0;
+  for (const [s, validOrderNums] of bySidra) {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${bridgeSecret}` },
+      body: JSON.stringify({ companyId, sidra: s, validOrderNums }),
+    });
+    if (!res.ok) throw new Error(`ניקוי ממתינות נכשל (סדרה ${s}): ${res.status} ${await res.text()}`);
+    const r = await res.json();
+    totalChecked += r.checked || 0;
+    totalRemoved += r.removed || 0;
+  }
+  return { checked: totalChecked, removed: totalRemoved };
+}
+
 const BATCH_SIZE = 50; // דוחפים בחבילות קטנות כדי לא לחרוג ממגבלת גודל בקשה
 
 async function pushBatch(orders) {
@@ -214,6 +283,11 @@ async function tick() {
     const result = await pushOrders(orders);
     const recon = await reconcile(orders, knownSidras);
     log(`סונכרנו ${orders.length} הזמנות (סדרות: ${knownSidras.join(',')}) ->`, result, `| ניקוי: ${recon.closed} נסגרו מתוך ${recon.checked} שנבדקו`);
+
+    const pending = await fetchPendingOrders();
+    const pendingResult = await pushPending(pending);
+    const pendingRecon = await reconcilePending(pending, knownSidras);
+    log(`ממתינות לאישור: ${pending.length} ->`, pendingResult, `| ניקוי: ${pendingRecon.removed} הוסרו מתוך ${pendingRecon.checked} שנבדקו`);
   } catch (e) {
     log('שגיאת סנכרון:', e.message);
   }

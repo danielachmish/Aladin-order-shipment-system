@@ -136,4 +136,51 @@ function undoRecentSyncClosures(companyId, sidra, sinceMinutesAgo) {
   return { checked: rows.length, reopened };
 }
 
-module.exports = { ingestOrders, reconcileOpenOrders, undoRecentSyncClosures, orderKey };
+// הזמנות status_ID=0 ("ללא סטטוס", עדיין אצל המזכירה) — תצוגה בלבד, לא חלק
+// ממנוע ה-workflow. פשוט מחליפים את כל הסט בכל סבב (אין claim/היסטוריה לשמר).
+function ingestPendingOrders(orders) {
+  const insert = db.prepare(`
+    INSERT INTO pending_orders_cache (order_key, company_id, sidra, order_num, customer_name, order_date, sigma_created_at, total_amount, sigma_agent_name, synced_at)
+    VALUES (@order_key, @company_id, @sidra, @order_num, @customer_name, @order_date, @sigma_created_at, @total_amount, @sigma_agent_name, datetime('now'))
+    ON CONFLICT(order_key) DO UPDATE SET
+      customer_name = excluded.customer_name, order_date = excluded.order_date,
+      sigma_created_at = excluded.sigma_created_at, total_amount = excluded.total_amount,
+      sigma_agent_name = excluded.sigma_agent_name, synced_at = datetime('now')
+  `);
+  const tx = db.transaction((list) => {
+    for (const o of list) {
+      insert.run({
+        order_key: orderKey(o.companyId, o.sidra, o.orderNum),
+        company_id: o.companyId, sidra: o.sidra, order_num: o.orderNum,
+        customer_name: o.customerName, order_date: o.orderDate || null,
+        sigma_created_at: o.createdAt || null, total_amount: o.totalAmount || null,
+        sigma_agent_name: o.agentName || null,
+      });
+    }
+  });
+  tx(orders);
+  return { received: orders.length };
+}
+
+// מסיר מהתצוגה הזמנות שכבר לא ב-status_ID=0 (הודפסו/בוטלו/חזרו) — לפי סדרה.
+function reconcilePendingOrders(companyId, sidra, validOrderNums) {
+  const prefix = `${companyId}|${sidra}|`;
+  const rows = db.prepare(`SELECT order_key FROM pending_orders_cache WHERE order_key LIKE ?`).all(`${prefix}%`);
+  const validSet = new Set(validOrderNums.map(String));
+  let removed = 0;
+  const tx = db.transaction(() => {
+    for (const r of rows) {
+      const num = r.order_key.split('|')[2];
+      if (validSet.has(num)) continue;
+      db.prepare('DELETE FROM pending_orders_cache WHERE order_key = ?').run(r.order_key);
+      removed++;
+    }
+  });
+  tx();
+  return { checked: rows.length, removed };
+}
+
+module.exports = {
+  ingestOrders, reconcileOpenOrders, undoRecentSyncClosures,
+  ingestPendingOrders, reconcilePendingOrders, orderKey,
+};

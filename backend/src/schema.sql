@@ -28,6 +28,22 @@ CREATE TABLE IF NOT EXISTS orders_cache (
   synced_at     TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- הזמנות שעדיין אצל המזכירה (status_ID=0 בסיגמא — טרם הודפסו/אושרו, לא נכנסות
+-- לתור הליקוט). תצוגה בלבד למנהל/מנהל מחסן/סוכנים, כדי לדעת מה מגיע בהמשך —
+-- לא חלק ממנוע ה-workflow (אין להן claim/priority/סטטוס עבודה).
+CREATE TABLE IF NOT EXISTS pending_orders_cache (
+  order_key     TEXT PRIMARY KEY, -- company_id|sidra|order_num
+  company_id    INTEGER NOT NULL,
+  sidra         INTEGER NOT NULL,
+  order_num     INTEGER NOT NULL,
+  customer_name TEXT NOT NULL,
+  order_date    TEXT,
+  sigma_created_at TEXT,
+  total_amount  REAL,
+  sigma_agent_name TEXT,
+  synced_at     TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS order_items_cache (
   order_key TEXT NOT NULL,
   line_no   INTEGER NOT NULL,
