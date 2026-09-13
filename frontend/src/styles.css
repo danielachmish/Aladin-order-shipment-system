@@ -170,10 +170,15 @@ body {
   position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);
   width: 100%; max-width: 480px; background: #fff; border-top: 1px solid var(--border);
   display: flex; z-index: 10;
+  /* יותר מדי לשוניות לרוחב מסך טלפון — גוררים כמו מגירה במקום לדחוס אייקונים (בקשת דניאל 14.9.2026) */
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
 }
+.tabbar::-webkit-scrollbar { display: none; }
 .tabbar button {
-  flex: 1; background: none; border: none; padding: 10px 4px; font-size: 12px; color: var(--muted);
-  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  flex: 0 0 auto; min-width: 68px; background: none; border: none; padding: 10px 8px; font-size: 12px; color: var(--muted);
+  display: flex; flex-direction: column; align-items: center; gap: 2px; white-space: nowrap;
 }
 .tabbar button.active { color: var(--teal); font-weight: bold; }
 .tabbar .icon { font-size: 18px; }
@@ -316,6 +321,7 @@ textarea, select {
     border-top: none; border-left: 1px solid var(--border);
     background: #fff; padding: 16px 8px; gap: 2px;
     transform: none; left: auto;
+    overflow-x: visible; overflow-y: auto;
   }
   .tabbar button {
     flex: none; flex-direction: row; justify-content: flex-start; gap: 10px;
