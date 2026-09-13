@@ -65,7 +65,14 @@ export default function OrderDetail({ user, orderKey, onBack }) {
   const version = order.version;
   const isWarehouse = user.role === 'warehouse' || user.role === 'warehouse_manager';
   const isManager = user.role === 'warehouse_manager' || user.role === 'system_admin';
-  const isOwnAgent = user.role === 'agent' && order.agent_id === user.id;
+  // "שלי" = שיוך מפורש (agent_id, נדיר) או התאמת השם שלי לשם הסוכן שהגיע
+  // מסיגמא (order.agent_name) — כי הזמנות מגיעות עם שם סוכן כטקסט חופשי בלבד,
+  // לא מקושרות למשתמש אפליקציה. בלי זה שום סוכן לא רואה כפתורי דחיפות/תוספת
+  // על ההזמנות שלו (בקשת דניאל, 14.9.2026).
+  const isOwnAgent = user.role === 'agent' && (
+    order.agent_id === user.id ||
+    (order.agent_name && order.agent_name.trim() === (user.name || '').trim())
+  );
   const pendingUrgent = urgentReqs.find((r) => r.status === 'pending');
 
   return (

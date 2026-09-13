@@ -8,10 +8,12 @@ function uid(prefix) {
   return `${prefix}_${crypto.randomBytes(8).toString('hex')}`;
 }
 
+// בדיקת שיוך הסוכן להזמנה (agent_id מפורש, או התאמת שם תצוגה ל-sigma_agent_name)
+// כבר נעשית בשכבת ה-route (routes.js: isAssignedAgent) לפני הקריאה לכאן —
+// כי רק שם יש גישה לשם התצוגה של המשתמש ולשם הסוכן שהגיע מסיגמא.
 function createRequest(orderKey, agentId) {
   const state = db.prepare('SELECT * FROM workflow_state WHERE order_key = ?').get(orderKey);
   if (!state) throw new RuleError('הזמנה לא נמצאה');
-  if (state.agent_id !== agentId) throw new RuleError('ניתן לבקש דחיפות רק להזמנות שלך');
   const pending = db.prepare(`SELECT 1 FROM urgent_requests WHERE order_key = ? AND status = 'pending'`).get(orderKey);
   if (pending) throw new RuleError('כבר קיימת בקשת דחיפות ממתינה להזמנה זו');
 

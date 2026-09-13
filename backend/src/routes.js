@@ -184,6 +184,21 @@ function baseOrderRow(order_key) {
   `).get(order_key);
 }
 
+// שיוך הזמנה לסוכן: או שיוך מפורש (ws.agent_id, כמעט אף פעם לא קיים כי הזמנות
+// מגיעות מסיגמא עם שם סוכן כטקסט חופשי בלבד — sigma_agent_name), או התאמה
+// לפי שם תצוגה: אם למשתמש-הסוכן שם זהה (אחרי טרים/נירמול רווחים) לשם הסוכן
+// שהגיע מסיגמא. בלי זה, שום סוכן לא היה יכול לפעול על אף הזמנה משלו בפועל —
+// באג שדניאל דיווח עליו 14.9.2026 ("אין אפשרות ללחוץ דחופה/תוספת").
+function normalizeName(s) {
+  return (s || '').trim().replace(/\s+/g, ' ');
+}
+function isAssignedAgent(order, user) {
+  if (!user || user.role !== 'agent') return false;
+  if (order.agent_id && order.agent_id === user.id) return true;
+  const orderAgentName = normalizeName(order.agent_name || order.sigma_agent_name);
+  return !!orderAgentName && orderAgentName === normalizeName(user.name);
+}
+
 function shipmentsForOrder(order_key) {
   return db.prepare(`
     SELECT s.*, os.ref1_raw
@@ -220,9 +235,11 @@ router.get('/orders', (req, res) => {
     params.push(`%${search}%`, `%${search}%`);
   }
   // סוכן: תלוי במתג "תצוגת הזמנות לסוכנים" (סעיף 5.4). סוכן יכול תמיד לראות רק את שלו אם scope=own.
+  // "שלו" = שיוך מפורש (agent_id, נדיר) או התאמת שם תצוגה לשם הסוכן שהגיע מסיגמא
+  // (ר' isAssignedAgent) — לכן ההשוואה כאן גם מול sigma_agent_name, לא רק agent_id.
   if (req.user.role === 'agent' && scope === 'own') {
-    sql += ` AND ws.agent_id = ?`;
-    params.push(req.user.id);
+    sql += ` AND (ws.agent_id = ? OR TRIM(oc.sigma_agent_name) = TRIM(?))`;
+    params.push(req.user.id, req.user.name);
   }
 
   let rows = db.prepare(sql).all(...params);
@@ -244,7 +261,7 @@ router.get('/orders/:key', (req, res) => {
   const order = baseOrderRow(key);
   if (!order) return res.status(404).json({ error: 'הזמנה לא נמצאה' });
 
-  if (req.user.role === 'agent' && order.agent_id !== req.user.id) {
+  if (req.user.role === 'agent' && !isAssignedAgent(order, req.user)) {
     const scope = getSetting('agent_view_scope', 'all');
     if (scope === 'own') return res.status(403).json({ error: 'אין הרשאה לצפות בהזמנה זו' });
   }
@@ -310,7 +327,7 @@ router.post('/orders/:key/request-wait', requireRole('warehouse', 'warehouse_man
 router.post('/orders/:key/received-answer', requireRole('warehouse', 'warehouse_manager', 'agent', 'system_admin'),
   handleWorkflowAction((key, req) => {
     const order = baseOrderRow(key);
-    if (req.user.role === 'agent' && order.agent_id !== req.user.id) {
+    if (req.user.role === 'agent' && !isAssignedAgent(order, req.user)) {
       const err = new Error('רק הסוכן המשויך להזמנה יכול לעדכן תשובה');
       err.status = 403;
       throw err;
@@ -325,7 +342,7 @@ router.post('/orders/:key/priority', requireRole('warehouse_manager', 'system_ad
 router.post('/orders/:key/request-addition', requireRole('agent', 'warehouse_manager', 'system_admin'),
   handleWorkflowAction((key, req) => {
     const order = baseOrderRow(key);
-    if (req.user.role === 'agent' && order.agent_id !== req.user.id) {
+    if (req.user.role === 'agent' && !isAssignedAgent(order, req.user)) {
       const err = new Error('רק הסוכן המשויך להזמנה יכול לבקש תוספת');
       err.status = 403;
       throw err;
@@ -336,7 +353,7 @@ router.post('/orders/:key/request-addition', requireRole('agent', 'warehouse_man
 router.post('/orders/:key/addition-received', requireRole('agent', 'warehouse_manager', 'system_admin'),
   handleWorkflowAction((key, req) => {
     const order = baseOrderRow(key);
-    if (req.user.role === 'agent' && order.agent_id !== req.user.id) {
+    if (req.user.role === 'agent' && !isAssignedAgent(order, req.user)) {
       const err = new Error('רק הסוכן המשויך להזמנה יכול לעדכן שהתוספת הגיעה');
       err.status = 403;
       throw err;
@@ -348,6 +365,11 @@ router.post('/orders/:key/addition-received', requireRole('agent', 'warehouse_ma
 router.post('/orders/:key/urgent-request', requireRole('agent'), (req, res) => {
   const key = decodeURIComponent(req.params.key);
   try {
+    const order = baseOrderRow(key);
+    if (!order) return res.status(404).json({ error: 'הזמנה לא נמצאה' });
+    if (!isAssignedAgent(order, req.user)) {
+      return res.status(403).json({ error: 'ניתן לבקש דחיפות רק להזמנות שלך' });
+    }
     const result = urgent.createRequest(key, req.user.id);
     res.json({ ok: true, request: result });
   } catch (e) {
