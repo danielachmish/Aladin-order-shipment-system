@@ -100,4 +100,40 @@ function reconcileOpenOrders(companyId, sidra, validOrderNums) {
   return { checked: rows.length, closed: closedCount };
 }
 
-module.exports = { ingestOrders, reconcileOpenOrders, orderKey };
+// תיקון-חירום: מחזיר ל"ממתינה לליקוט" הזמנות שנסגרו בטעות ע"י reconcile (למשל
+// קריאת בדיקה/דיבוג עם validOrderNums ריק ששלחה סגירה לא נכונה). לא נוגע
+// בהזמנות שנסגרו מסיבה אחרת (סטטוס to_status חייב להיות 'closed' עם ההערה
+// הספציפית של ניקוי סנכרון, ולא היה שינוי סטטוס נוסף אחריו).
+function undoRecentSyncClosures(companyId, sidra, sinceMinutesAgo) {
+  const prefix = `${companyId}|${sidra}|`;
+  const rows = db.prepare(`
+    SELECT we.order_key, we.event_id
+    FROM workflow_events we
+    JOIN workflow_state ws ON ws.order_key = we.order_key
+    WHERE we.order_key LIKE ?
+      AND we.to_status = 'closed'
+      AND we.note = 'הוסרה מסנכרון Sigma — כבר לא בקריטריון ההזמנות הפתוחות'
+      AND we.created_at >= datetime('now', ?)
+      AND ws.status = 'closed'
+  `).all(`${prefix}%`, `-${Number(sinceMinutesAgo)} minutes`);
+
+  let reopened = 0;
+  const tx = db.transaction(() => {
+    for (const r of rows) {
+      db.prepare(`
+        UPDATE workflow_state SET status = 'waiting_pick', version = version + 1, updated_at = datetime('now')
+        WHERE order_key = ?
+      `).run(r.order_key);
+      db.prepare(`
+        INSERT INTO workflow_events (event_id, order_key, user_id, from_status, to_status, note)
+        VALUES (?, ?, NULL, 'closed', 'waiting_pick', 'שוחזרה — נסגרה בטעות ע"י בדיקת ניקוי שגויה')
+      `).run(uid('evt'), r.order_key);
+      emitChange('order', { order_key: r.order_key, status: 'waiting_pick' });
+      reopened++;
+    }
+  });
+  tx();
+  return { checked: rows.length, reopened };
+}
+
+module.exports = { ingestOrders, reconcileOpenOrders, undoRecentSyncClosures, orderKey };

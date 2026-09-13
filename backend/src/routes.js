@@ -89,6 +89,26 @@ router.post('/admin/sigma-sync/reconcile', express.json({ limit: '1mb' }), (req,
   }
 });
 
+// תיקון-חירום: שחזור הזמנות שנסגרו בטעות ע"י קריאת reconcile שגויה (לא נשלחת
+// כחלק מהזרימה הרגילה — נשארת כאן לשימוש נקודתי במקרה חירום דומה בעתיד).
+router.post('/admin/sigma-sync/undo-closures', express.json({ limit: '1mb' }), (req, res) => {
+  if (!sigmaCfg.bridgeSecret) {
+    return res.status(400).json({ error: 'SIGMA_BRIDGE_SECRET לא מוגדר בשרת' });
+  }
+  const header = req.headers.authorization || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+  if (token !== sigmaCfg.bridgeSecret) {
+    return res.status(401).json({ error: 'אימות Sigma Bridge נכשל' });
+  }
+  try {
+    const { companyId, sidra, sinceMinutesAgo } = req.body || {};
+    const result = sigmaIngest.undoRecentSyncClosures(companyId, sidra, sinceMinutesAgo || 30);
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 router.use(authMiddleware);
 
 // ---------- Settings ----------
