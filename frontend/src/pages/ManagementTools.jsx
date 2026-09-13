@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api.js';
 import { onLive } from '../ws.js';
-import Dashboard from '../components/Dashboard.jsx';
 import UserManagement from '../components/UserManagement.jsx';
 
-export default function Admin({ user, onOpenOrder }) {
+// כלי ניהול — הגדרות ותצורה (לא KPI/מדדים, זה תפקיד הדשבורד). מסך נפרד
+// מהדשבורד, בהשראת מסכי ניהול מודרניים (כמו לוח הבקרה החדש של UPS Ship).
+// ר' בקשת דניאל 14.9.2026.
+export default function ManagementTools({ onOpenOrder }) {
   const [scope, setScope] = useState('all');
   const [pending, setPending] = useState([]);
   const [busy, setBusy] = useState(false);
@@ -47,36 +49,38 @@ export default function Admin({ user, onOpenOrder }) {
 
   return (
     <div>
-      <Dashboard onOpenOrder={onOpenOrder} />
+      <div className="settings-card">
+        <div className="settings-card-title">בקשות דחיפות ממתינות</div>
+        {pending.length === 0 && <div className="empty-state">אין בקשות ממתינות</div>}
+        {pending.map((r) => (
+          <div className="admin-list-item" key={r.request_id}>
+            <div className="top" onClick={() => onOpenOrder(r.order_key)} style={{ cursor: 'pointer' }}>
+              <b>הזמנה {r.order_num}</b>
+              <span className="meta">{r.customer_name}</span>
+            </div>
+            <div className="meta">סוכן: {r.agent_name} · {new Date(r.created_at).toLocaleString('he-IL')}</div>
+            <div className="actions">
+              <button className="btn-approve" disabled={busy} onClick={() => decide(r.request_id, true)}>אשר דחיפות</button>
+              <button className="btn-reject" disabled={busy} onClick={() => decide(r.request_id, false)}>דחה</button>
+            </div>
+          </div>
+        ))}
+      </div>
 
-      <div className="section-title">תצוגת הזמנות לסוכנים</div>
-      <div className="toggle-row">
-        <span>סוכנים רואים:</span>
-        <div className="toggle">
-          <button className={scope === 'all' ? 'active' : ''} disabled={busy} onClick={() => changeScope('all')}>כל ההזמנות</button>
-          <button className={scope === 'own' ? 'active' : ''} disabled={busy} onClick={() => changeScope('own')}>רק שלי</button>
+      <div className="settings-card">
+        <div className="settings-card-title">תצוגת הזמנות לסוכנים</div>
+        <div className="toggle-row">
+          <span>סוכנים רואים:</span>
+          <div className="toggle">
+            <button className={scope === 'all' ? 'active' : ''} disabled={busy} onClick={() => changeScope('all')}>כל ההזמנות</button>
+            <button className={scope === 'own' ? 'active' : ''} disabled={busy} onClick={() => changeScope('own')}>רק שלי</button>
+          </div>
         </div>
       </div>
 
-      <div className="section-title">בקשות דחיפות ממתינות</div>
-      {pending.length === 0 && <div className="empty-state">אין בקשות ממתינות</div>}
-      {pending.map((r) => (
-        <div className="admin-list-item" key={r.request_id}>
-          <div className="top" onClick={() => onOpenOrder(r.order_key)} style={{ cursor: 'pointer' }}>
-            <b>הזמנה {r.order_num}</b>
-            <span className="meta">{r.customer_name}</span>
-          </div>
-          <div className="meta">סוכן: {r.agent_name} · {new Date(r.created_at).toLocaleString('he-IL')}</div>
-          <div className="actions">
-            <button className="btn-approve" disabled={busy} onClick={() => decide(r.request_id, true)}>אשר דחיפות</button>
-            <button className="btn-reject" disabled={busy} onClick={() => decide(r.request_id, false)}>דחה</button>
-          </div>
-        </div>
-      ))}
-
       {status && (
-        <>
-          <div className="section-title">מצב חיבורים</div>
+        <div className="settings-card">
+          <div className="settings-card-title">חיבורים חיצוניים</div>
           <div className="admin-list-item">
             <div className="top"><b>Sigma</b>
               <span className={'live-pill ' + (status.sigma.bridgeConfigured ? 'on' : 'off')} style={{ margin: 0 }}>
@@ -102,10 +106,13 @@ export default function Admin({ user, onOpenOrder }) {
           {status.failedRuns24h > 0 && (
             <div className="error-box">{status.failedRuns24h} סנכרונים נכשלו ב-24 השעות האחרונות</div>
           )}
-        </>
+        </div>
       )}
 
-      <UserManagement />
+      <div className="settings-card">
+        <div className="settings-card-title">משתמשים</div>
+        <UserManagement />
+      </div>
     </div>
   );
 }

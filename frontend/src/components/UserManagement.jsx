@@ -94,7 +94,6 @@ export default function UserManagement() {
 
   return (
     <div>
-      <div className="section-title">ניהול משתמשים</div>
       {error && <div className="error-box">{error}</div>}
 
       {users.map((u) => (

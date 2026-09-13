@@ -6,16 +6,25 @@ import Exceptions from './pages/Exceptions.jsx';
 import History from './pages/History.jsx';
 import PendingOrders from './pages/PendingOrders.jsx';
 import Shipments from './pages/Shipments.jsx';
-import Admin from './pages/Admin.jsx';
+import Dashboard from './components/Dashboard.jsx';
+import ManagementTools from './pages/ManagementTools.jsx';
 import { getToken, getUser, clearSession } from './api.js';
 import { roleLabel } from './labels.js';
 import { connectLive, onLive, isConnected } from './ws.js';
 import { showToast } from './toast.js';
 import ToastStack from './components/ToastStack.jsx';
 
+function isManagerRole(role) {
+  return role === 'warehouse_manager' || role === 'system_admin';
+}
+function defaultTabFor(user) {
+  // הדשבורד הוא מסך הבית של מנהל (לא כלי ניהול/הגדרות) — בקשת דניאל 14.9.2026
+  return user && isManagerRole(user.role) ? 'dashboard' : 'orders';
+}
+
 export default function App() {
   const [user, setUser] = useState(getUser());
-  const [tab, setTab] = useState('orders'); // orders | exceptions | admin
+  const [tab, setTab] = useState(() => defaultTabFor(getUser()));
   const [openOrderKey, setOpenOrderKey] = useState(null);
   const [live, setLive] = useState(isConnected());
 
@@ -40,17 +49,16 @@ export default function App() {
   }, [user]);
 
   if (!user) {
-    return <Login onLoggedIn={(u) => { setUser(u); connectLive(); }} />;
+    return <Login onLoggedIn={(u) => { setUser(u); setTab(defaultTabFor(u)); connectLive(); }} />;
   }
 
   function logout() {
     clearSession();
     setUser(null);
-    setTab('orders');
     setOpenOrderKey(null);
   }
 
-  const isManager = user.role === 'warehouse_manager' || user.role === 'system_admin';
+  const isManager = isManagerRole(user.role);
   const canSeeHistory = user.role === 'warehouse' || isManager;
   // ממתינות לאישור: מנהל, מנהל מחסן, וסוכנים — לא צוות המחסן השוטף (סעיף בקשת דניאל, 14.9.2026)
   const canSeePending = user.role === 'agent' || isManager;
@@ -80,6 +88,8 @@ export default function App() {
       <div className="content">
         {openOrderKey ? (
           <OrderDetail user={user} orderKey={openOrderKey} onBack={() => setOpenOrderKey(null)} />
+        ) : tab === 'dashboard' ? (
+          <Dashboard onOpenOrder={openOrder} />
         ) : tab === 'orders' ? (
           <OrdersList user={user} onOpenOrder={openOrder} />
         ) : tab === 'exceptions' ? (
@@ -91,12 +101,17 @@ export default function App() {
         ) : tab === 'shipments' ? (
           <Shipments onOpenOrder={openOrder} />
         ) : (
-          <Admin user={user} onOpenOrder={openOrder} />
+          <ManagementTools onOpenOrder={openOrder} />
         )}
       </div>
 
       {!openOrderKey && (
         <div className="tabbar">
+          {isManager && (
+            <button className={tab === 'dashboard' ? 'active' : ''} onClick={() => setTab('dashboard')}>
+              <span className="icon">🏠</span>דשבורד
+            </button>
+          )}
           <button className={tab === 'orders' ? 'active' : ''} onClick={() => setTab('orders')}>
             <span className="icon">📦</span>הזמנות
           </button>
@@ -117,8 +132,8 @@ export default function App() {
             <span className="icon">🚚</span>משלוחים
           </button>
           {isManager && (
-            <button className={tab === 'admin' ? 'active' : ''} onClick={() => setTab('admin')}>
-              <span className="icon">🛠️</span>ניהול
+            <button className={tab === 'management' ? 'active' : ''} onClick={() => setTab('management')}>
+              <span className="icon">🛠️</span>כלי ניהול
             </button>
           )}
         </div>
