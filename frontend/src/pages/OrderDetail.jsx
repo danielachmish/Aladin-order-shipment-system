@@ -181,10 +181,13 @@ export default function OrderDetail({ user, orderKey, onBack }) {
       )}
 
       {/* ---- פעולות מנהל ---- */}
-      {isManager && order.status === 'on_hold' && (
+      {/* שחרור חסימה: גם מחסן רגיל (לא רק מנהל) — ביטול מלא נשאר למנהל בלבד */}
+      {(isWarehouse || user.role === 'system_admin') && order.status === 'on_hold' && (
         <div className="btn-row">
           <button className="action-btn" disabled={busy} onClick={() => act(() => api.releaseHold(orderKey))}>שחרור חסימה</button>
-          <button className="action-btn danger" disabled={busy} onClick={() => act(() => api.cancelOrder(orderKey, 'בוטל על ידי מנהל'))}>ביטול הזמנה</button>
+          {isManager && (
+            <button className="action-btn danger" disabled={busy} onClick={() => act(() => api.cancelOrder(orderKey, 'בוטל על ידי מנהל'))}>ביטול הזמנה</button>
+          )}
         </div>
       )}
 

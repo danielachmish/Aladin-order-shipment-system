@@ -294,7 +294,10 @@ router.post('/orders/:key/close', requireRole('warehouse', 'warehouse_manager', 
 router.post('/orders/:key/issue', requireRole('warehouse', 'warehouse_manager'),
   handleWorkflowAction((key, req) => wf.reportIssue(key, req.user.id, req.body?.reason || 'לא צוינה סיבה')));
 
-router.post('/orders/:key/release-hold', requireRole('warehouse_manager', 'system_admin'),
+// שחרור הזמנה מעוכבת: גם למחסן הרגיל (לא רק מנהל מחסן) — כדי שלא יתקע
+// לגמרי אם הוא-עצמו דיווח את הבעיה ורוצה להמשיך. ביטול מלא נשאר למנהל בלבד
+// (סעיף בקשת דניאל, 14.9.2026).
+router.post('/orders/:key/release-hold', requireRole('warehouse', 'warehouse_manager', 'system_admin'),
   handleWorkflowAction((key, req) => wf.releaseHold(key, req.user.id, req.body?.note)));
 
 router.post('/orders/:key/cancel', requireRole('warehouse_manager', 'system_admin'),
