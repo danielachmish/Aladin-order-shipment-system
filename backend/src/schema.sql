@@ -70,6 +70,7 @@ CREATE TABLE IF NOT EXISTS workflow_state (
   version         INTEGER NOT NULL DEFAULT 1, -- optimistic concurrency
   hold_reason     TEXT,
   pending_addition_note TEXT, -- לא NULL = יש "תוספת" בדרך; חוסם סגירת ההזמנה (סעיף בקשת דניאל, 14.9.2026)
+  delivery_method TEXT, -- ups | self_pickup — נקבע ב-waiting_pickup (סעיף בקשת דניאל, 14.9.2026)
   updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (order_key) REFERENCES orders_cache(order_key)
 );

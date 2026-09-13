@@ -87,6 +87,9 @@ export default function OrderDetail({ user, orderKey, onBack }) {
           <div className="queue-pos">בתור {queuePos.position} מתוך {queuePos.total} · {queuePos.ahead} הזמנות לפניה</div>
         )}
         {order.status === 'picking' && <div className="meta" style={{ marginTop: 6 }}>מטפל: {order.claimed_by_name}</div>}
+        {order.delivery_method && (
+          <div className="meta">אופן משלוח: {order.delivery_method === 'self_pickup' ? 'איסוף עצמי' : 'UPS'}</div>
+        )}
         {order.agent_name && <div className="meta">סוכן משויך: {order.agent_name}</div>}
         {order.status === 'on_hold' && <div className="meta" style={{ color: '#c0392b', marginTop: 6 }}>סיבה: {order.hold_reason}</div>}
         {order.pending_addition_note && (
@@ -118,7 +121,7 @@ export default function OrderDetail({ user, orderKey, onBack }) {
       )}
 
       {!['cancelled'].includes(order.status) && (
-        <OrderTimeline status={order.status} preWaitStatus={order.pre_wait_status} />
+        <OrderTimeline status={order.status} preWaitStatus={order.pre_wait_status} deliveryMethod={order.delivery_method} />
       )}
 
       <div className="section-title">פריטים</div>
@@ -143,7 +146,17 @@ export default function OrderDetail({ user, orderKey, onBack }) {
         <button className="action-btn" disabled={busy} onClick={() => act(() => api.packDone(orderKey, version))}>סיום אריזה</button>
       )}
       {isWarehouse && order.status === 'waiting_pickup' && (
-        <button className="action-btn" disabled={busy} onClick={() => act(() => api.deliverUps(orderKey, version))}>מסירה ל-UPS</button>
+        <div className="btn-row">
+          <button className="action-btn" disabled={busy} onClick={() => act(() => api.deliverUps(orderKey, version))}>מסירה ל-UPS</button>
+          <button
+            className="action-btn secondary"
+            disabled={busy || !!order.pending_addition_note}
+            title={order.pending_addition_note ? `לא ניתן לסגור — ממתינה תוספת: ${order.pending_addition_note}` : undefined}
+            onClick={() => act(() => api.selfPickup(orderKey, version))}
+          >
+            איסוף עצמי על ידי הלקוח
+          </button>
+        </div>
       )}
       {(isWarehouse || user.role === 'system_admin') && order.status === 'delivered_to_ups' && (
         <button

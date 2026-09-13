@@ -53,6 +53,7 @@ export const api = {
   finishPicking: (key, expectedVersion) => request(`/orders/${encodeURIComponent(key)}/finish-picking`, { method: 'POST', body: JSON.stringify({ expectedVersion }) }),
   packDone: (key, expectedVersion) => request(`/orders/${encodeURIComponent(key)}/pack-done`, { method: 'POST', body: JSON.stringify({ expectedVersion }) }),
   deliverUps: (key, expectedVersion) => request(`/orders/${encodeURIComponent(key)}/deliver-ups`, { method: 'POST', body: JSON.stringify({ expectedVersion }) }),
+  selfPickup: (key, expectedVersion) => request(`/orders/${encodeURIComponent(key)}/self-pickup`, { method: 'POST', body: JSON.stringify({ expectedVersion }) }),
   closeOrder: (key) => request(`/orders/${encodeURIComponent(key)}/close`, { method: 'POST', body: JSON.stringify({}) }),
   reportIssue: (key, reason) => request(`/orders/${encodeURIComponent(key)}/issue`, { method: 'POST', body: JSON.stringify({ reason }) }),
   releaseHold: (key, note) => request(`/orders/${encodeURIComponent(key)}/release-hold`, { method: 'POST', body: JSON.stringify({ note }) }),
@@ -77,6 +78,7 @@ export const api = {
 
   dashboard: () => request('/dashboard'),
   pendingOrders: () => request('/pending-orders'),
+  shipments: () => request('/shipments'),
 
   getAgentViewScope: () => request('/settings/agent-view-scope'),
   setAgentViewScope: (scope) => request('/settings/agent-view-scope', { method: 'POST', body: JSON.stringify({ scope }) }),

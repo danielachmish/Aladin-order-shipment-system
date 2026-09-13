@@ -173,7 +173,7 @@ router.post('/settings/agent-view-scope', requireRole('warehouse_manager', 'syst
 function baseOrderRow(order_key) {
   return db.prepare(`
     SELECT oc.*, ws.status, ws.priority, ws.agent_id, ws.claimed_by, ws.queue_entered_at,
-           ws.version, ws.hold_reason, ws.pre_wait_status, ws.pending_addition_note, ws.updated_at AS wf_updated_at,
+           ws.version, ws.hold_reason, ws.pre_wait_status, ws.pending_addition_note, ws.delivery_method, ws.updated_at AS wf_updated_at,
            COALESCE(u.display_name, oc.sigma_agent_name) AS agent_name, cu.display_name AS claimed_by_name
     FROM orders_cache oc
     JOIN workflow_state ws ON ws.order_key = oc.order_key
@@ -284,6 +284,9 @@ router.post('/orders/:key/pack-done', requireRole('warehouse', 'warehouse_manage
 
 router.post('/orders/:key/deliver-ups', requireRole('warehouse', 'warehouse_manager'),
   handleWorkflowAction((key, req) => wf.deliverToUps(key, req.user.id, req.body?.expectedVersion)));
+
+router.post('/orders/:key/self-pickup', requireRole('warehouse', 'warehouse_manager'),
+  handleWorkflowAction((key, req) => wf.selfPickup(key, req.user.id, req.body?.expectedVersion)));
 
 router.post('/orders/:key/close', requireRole('warehouse', 'warehouse_manager', 'system_admin'),
   handleWorkflowAction((key, req) => wf.closeOrder(key, req.user.id)));
@@ -444,6 +447,25 @@ router.get('/history', requireRole('warehouse', 'warehouse_manager', 'system_adm
   });
 
   res.json({ orders: result, sinceDays });
+});
+
+// ---------- לשונית "משלוחים": כל מה שכבר נמסר בפועל ל-UPS, עם סטטוס עדכני ----------
+// לא כולל הזמנות באיסוף עצמי (delivery_method='self_pickup') — אלו לא עוברות ב-UPS כלל.
+router.get('/shipments', requireRole('agent', 'warehouse', 'warehouse_manager', 'system_admin'), (req, res) => {
+  const rows = db.prepare(`
+    SELECT track_no, status, status_desc_heb, exception_code, exception_desc_heb,
+           estimate_delivery, delivered_time, received_by, rts_track_no, updated_at
+    FROM shipments
+    ORDER BY updated_at DESC
+    LIMIT 300
+  `).all();
+  const orderStmt = db.prepare(`
+    SELECT oc.order_key, oc.order_num, oc.customer_name
+    FROM order_shipments os JOIN orders_cache oc ON oc.order_key = os.order_key
+    WHERE os.track_no = ?
+  `);
+  const result = rows.map((r) => ({ ...r, orders: orderStmt.all(r.track_no) }));
+  res.json({ shipments: result });
 });
 
 // הזמנות status_ID=0 ("ללא סטטוס" — עדיין אצל המזכירה, לא בתור הליקוט).

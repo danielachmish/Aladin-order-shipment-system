@@ -5,6 +5,7 @@ import OrderDetail from './pages/OrderDetail.jsx';
 import Exceptions from './pages/Exceptions.jsx';
 import History from './pages/History.jsx';
 import PendingOrders from './pages/PendingOrders.jsx';
+import Shipments from './pages/Shipments.jsx';
 import Admin from './pages/Admin.jsx';
 import { getToken, getUser, clearSession } from './api.js';
 import { roleLabel } from './labels.js';
@@ -87,6 +88,8 @@ export default function App() {
           <History onOpenOrder={openOrder} />
         ) : tab === 'pending' ? (
           <PendingOrders />
+        ) : tab === 'shipments' ? (
+          <Shipments onOpenOrder={openOrder} />
         ) : (
           <Admin user={user} onOpenOrder={openOrder} />
         )}
@@ -110,6 +113,9 @@ export default function App() {
               <span className="icon">⏳</span>ממתינות
             </button>
           )}
+          <button className={tab === 'shipments' ? 'active' : ''} onClick={() => setTab('shipments')}>
+            <span className="icon">🚚</span>משלוחים
+          </button>
           {isManager && (
             <button className={tab === 'admin' ? 'active' : ''} onClick={() => setTab('admin')}>
               <span className="icon">🛠️</span>ניהול

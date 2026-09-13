@@ -98,7 +98,20 @@ function deliverToUps(orderKey, userId, expectedVersion) {
   if (!state) throw new RuleError('הזמנה לא נמצאה');
   if (state.status !== 'waiting_pickup') throw new RuleError('ההזמנה אינה ממתינה לאיסוף');
   assertVersion(state, expectedVersion);
-  return writeTransition(orderKey, userId, 'delivered_to_ups', {}, 'מסירה ל UPS');
+  return writeTransition(orderKey, userId, 'delivered_to_ups', { delivery_method: 'ups' }, 'מסירה ל UPS');
+}
+
+// איסוף עצמי ע"י הלקוח — לא עובר דרך UPS בכלל, נסגר ישירות (עדיין בכפוף
+// לבדיקת "תוספת בדרך", בדיוק כמו סגירה רגילה). ר' בקשת דניאל 14.9.2026.
+function selfPickup(orderKey, userId, expectedVersion) {
+  const state = getState(orderKey);
+  if (!state) throw new RuleError('הזמנה לא נמצאה');
+  if (state.status !== 'waiting_pickup') throw new RuleError('ההזמנה אינה ממתינה לאיסוף');
+  assertVersion(state, expectedVersion);
+  if (state.pending_addition_note) {
+    throw new RuleError(`לא ניתן לסגור — ממתינה תוספת: ${state.pending_addition_note}`);
+  }
+  return writeTransition(orderKey, userId, 'closed', { delivery_method: 'self_pickup' }, 'איסוף עצמי על ידי הלקוח');
 }
 
 function closeOrder(orderKey, userId) {
@@ -211,7 +224,7 @@ function setPriority(orderKey, priority, managerId) {
 
 module.exports = {
   ConflictError, RuleError, ACTIVE_STATUSES,
-  getState, claimOrder, finishPicking, packDone, deliverToUps, closeOrder,
+  getState, claimOrder, finishPicking, packDone, deliverToUps, selfPickup, closeOrder,
   reportIssue, releaseHold, cancelOrder, requestWait, receivedAnswer, setPriority,
   requestAddition, additionReceived,
 };
