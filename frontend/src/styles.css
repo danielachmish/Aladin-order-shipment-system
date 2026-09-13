@@ -131,6 +131,16 @@ body {
 }
 .settings-card .admin-list-item:last-child { margin-bottom: 0; }
 
+/* פאנל עם הרבה תוכן (הרבה הזמנות/חריגות/משלוחים) מקבל "מעלית" פנימית במקום
+   למתוח את כל הכרטיס לגובה בלתי מוגבל (בקשת דניאל 14.9.2026) */
+.scroll-panel {
+  max-height: 360px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.scroll-panel table { margin: 0; }
+.scroll-panel .admin-list-item:last-child { margin-bottom: 8px; }
+
 .detail-header {
   background: #fff; border: 1px solid var(--border); border-radius: 12px; padding: 14px; margin-bottom: 12px;
 }

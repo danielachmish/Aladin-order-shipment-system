@@ -190,7 +190,9 @@ function baseOrderRow(order_key) {
 // שהגיע מסיגמא. בלי זה, שום סוכן לא היה יכול לפעול על אף הזמנה משלו בפועל —
 // באג שדניאל דיווח עליו 14.9.2026 ("אין אפשרות ללחוץ דחופה/תוספת").
 function normalizeName(s) {
-  return (s || '').trim().replace(/\s+/g, ' ');
+  // מסיר גם סיומת בסוגריים כמו "(סוכן)"/"(סוכנת)" — הרגל מהמשתמשי-דמו הישנים
+  // שאנשים נוטים לחזור עליו כשיוצרים משתמש חדש, אבל בסיגמא השם מגיע נקי.
+  return (s || '').trim().replace(/\s+/g, ' ').replace(/\s*\([^)]*\)\s*$/, '').trim();
 }
 function isAssignedAgent(order, user) {
   if (!user || user.role !== 'agent') return false;
@@ -368,7 +370,9 @@ router.post('/orders/:key/urgent-request', requireRole('agent'), (req, res) => {
     const order = baseOrderRow(key);
     if (!order) return res.status(404).json({ error: 'הזמנה לא נמצאה' });
     if (!isAssignedAgent(order, req.user)) {
-      return res.status(403).json({ error: 'ניתן לבקש דחיפות רק להזמנות שלך' });
+      return res.status(403).json({
+        error: `ניתן לבקש דחיפות רק להזמנות שלך (השם שלך: "${req.user.name}", הסוכן על ההזמנה: "${order.agent_name || '—'}")`,
+      });
     }
     const result = urgent.createRequest(key, req.user.id);
     res.json({ ok: true, request: result });

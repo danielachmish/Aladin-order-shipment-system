@@ -132,22 +132,24 @@ export default function Dashboard({ user, onOpenOrder }) {
         {activeOrders.length === 0 && <div className="empty-state">אין הזמנות פעילות כרגע</div>}
         {activeOrders.length > 0 && (
           <div style={{ overflowX: 'auto' }}>
-            <table className="agent-table">
-              <thead>
-                <tr><th>הזמנה</th><th>לקוח</th><th>סטטוס</th><th>עדיפות</th><th>סוכן</th></tr>
-              </thead>
-              <tbody>
-                {activeOrders.map((o) => (
-                  <tr key={o.order_key} onClick={() => onOpenOrder(o.order_key)} style={{ cursor: 'pointer' }}>
-                    <td>{o.order_num}</td>
-                    <td>{o.customer_name}</td>
-                    <td><span className={`badge status-${o.status}`}>{statusLabel(o.status)}</span></td>
-                    <td>{o.priority !== 'normal' ? priorityLabel(o.priority) : '—'}</td>
-                    <td>{o.agent_name || '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div className="scroll-panel">
+              <table className="agent-table">
+                <thead>
+                  <tr><th>הזמנה</th><th>לקוח</th><th>סטטוס</th><th>עדיפות</th><th>סוכן</th></tr>
+                </thead>
+                <tbody>
+                  {activeOrders.map((o) => (
+                    <tr key={o.order_key} onClick={() => onOpenOrder(o.order_key)} style={{ cursor: 'pointer' }}>
+                      <td>{o.order_num}</td>
+                      <td>{o.customer_name}</td>
+                      <td><span className={`badge status-${o.status}`}>{statusLabel(o.status)}</span></td>
+                      <td>{o.priority !== 'normal' ? priorityLabel(o.priority) : '—'}</td>
+                      <td>{o.agent_name || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
             {orders.length > activeOrders.length && (
               <div className="meta" style={{ marginTop: 6 }}>מוצגות {activeOrders.length} מתוך {activeTotal} הזמנות פעילות</div>
             )}
@@ -159,19 +161,23 @@ export default function Dashboard({ user, onOpenOrder }) {
       <div className="settings-card">
         <div className="settings-card-title">🔴 בקשות דחיפות ממתינות {pendingUrgent.length > 0 && `(${pendingUrgent.length})`}</div>
         {pendingUrgent.length === 0 && <div className="empty-state">אין בקשות ממתינות</div>}
-        {pendingUrgent.map((r) => (
-          <div className="admin-list-item" key={r.request_id}>
-            <div className="top" onClick={() => onOpenOrder(r.order_key)} style={{ cursor: 'pointer' }}>
-              <b>הזמנה {r.order_num}</b>
-              <span className="meta">{r.customer_name}</span>
-            </div>
-            <div className="meta">סוכן: {r.agent_name} · {new Date(r.created_at).toLocaleString('he-IL')}</div>
-            <div className="actions">
-              <button className="btn-approve" disabled={busy} onClick={() => decide(r.request_id, true)}>אשר דחיפות</button>
-              <button className="btn-reject" disabled={busy} onClick={() => decide(r.request_id, false)}>דחה</button>
-            </div>
+        {pendingUrgent.length > 0 && (
+          <div className="scroll-panel">
+            {pendingUrgent.map((r) => (
+              <div className="admin-list-item" key={r.request_id}>
+                <div className="top" onClick={() => onOpenOrder(r.order_key)} style={{ cursor: 'pointer' }}>
+                  <b>הזמנה {r.order_num}</b>
+                  <span className="meta">{r.customer_name}</span>
+                </div>
+                <div className="meta">סוכן: {r.agent_name} · {new Date(r.created_at).toLocaleString('he-IL')}</div>
+                <div className="actions">
+                  <button className="btn-approve" disabled={busy} onClick={() => decide(r.request_id, true)}>אשר דחיפות</button>
+                  <button className="btn-reject" disabled={busy} onClick={() => decide(r.request_id, false)}>דחה</button>
+                </div>
+              </div>
+            ))}
           </div>
-        ))}
+        )}
       </div>
 
       {/* ---- חריגות ---- */}
@@ -179,49 +185,53 @@ export default function Dashboard({ user, onOpenOrder }) {
         <div className="settings-card-title">⚠️ חריגות {exceptionsTotal > 0 && `(${exceptionsTotal})`}</div>
         {exceptionsTotal === 0 && <div className="empty-state">אין חריגות כרגע 🎉</div>}
 
-        {onHold.length > 0 && (
-          <>
-            <div className="meta" style={{ fontWeight: 'bold', marginBottom: 4 }}>הזמנות מעוכבות</div>
-            {onHold.map((o) => (
-              <div className="admin-list-item" key={o.order_key} onClick={() => onOpenOrder(o.order_key)} style={{ cursor: 'pointer' }}>
-                <div className="top"><b>הזמנה {o.order_num}</b><span className="meta">{o.customer_name}</span></div>
-                <div className="meta" style={{ color: '#c0392b' }}>{o.hold_reason}</div>
-              </div>
-            ))}
-          </>
-        )}
+        {exceptionsTotal > 0 && (
+          <div className="scroll-panel">
+            {onHold.length > 0 && (
+              <>
+                <div className="meta" style={{ fontWeight: 'bold', marginBottom: 4 }}>הזמנות מעוכבות</div>
+                {onHold.map((o) => (
+                  <div className="admin-list-item" key={o.order_key} onClick={() => onOpenOrder(o.order_key)} style={{ cursor: 'pointer' }}>
+                    <div className="top"><b>הזמנה {o.order_num}</b><span className="meta">{o.customer_name}</span></div>
+                    <div className="meta" style={{ color: '#c0392b' }}>{o.hold_reason}</div>
+                  </div>
+                ))}
+              </>
+            )}
 
-        {linkExceptions.length > 0 && (
-          <>
-            <div className="meta" style={{ fontWeight: 'bold', margin: '10px 0 4px' }}>חריגות קישור UPS (אסמכתא שגויה)</div>
-            {linkExceptions.map((le) => (
-              <div className="admin-list-item" key={le.exception_id}>
-                <div className="top">
-                  <b>שטר {le.track_no}</b>
-                  <span className="meta">{new Date(le.created_at).toLocaleString('he-IL')}</span>
-                </div>
-                <div className="meta">מספר לא תקין: {le.bad_ref} — {le.reason}</div>
-                <div className="actions">
-                  <button className="btn-approve" disabled={busy} onClick={() => resolveLink(le.exception_id)}>סמן כטופל</button>
-                </div>
-              </div>
-            ))}
-          </>
-        )}
+            {linkExceptions.length > 0 && (
+              <>
+                <div className="meta" style={{ fontWeight: 'bold', margin: '10px 0 4px' }}>חריגות קישור UPS (אסמכתא שגויה)</div>
+                {linkExceptions.map((le) => (
+                  <div className="admin-list-item" key={le.exception_id}>
+                    <div className="top">
+                      <b>שטר {le.track_no}</b>
+                      <span className="meta">{new Date(le.created_at).toLocaleString('he-IL')}</span>
+                    </div>
+                    <div className="meta">מספר לא תקין: {le.bad_ref} — {le.reason}</div>
+                    <div className="actions">
+                      <button className="btn-approve" disabled={busy} onClick={() => resolveLink(le.exception_id)}>סמן כטופל</button>
+                    </div>
+                  </div>
+                ))}
+              </>
+            )}
 
-        {shipmentExceptions.length > 0 && (
-          <>
-            <div className="meta" style={{ fontWeight: 'bold', margin: '10px 0 4px' }}>חריגות משלוח UPS</div>
-            {shipmentExceptions.map((s) => (
-              <div className="admin-list-item" key={s.track_no}>
-                <div className="top">
-                  <b>{s.track_no}</b>
-                  <span className={`badge ship-${s.status}`}>{shipLabel(s.status)}</span>
-                </div>
-                {s.exception_desc_heb && <div className="meta" style={{ color: '#c0392b' }}>{s.exception_desc_heb}</div>}
-              </div>
-            ))}
-          </>
+            {shipmentExceptions.length > 0 && (
+              <>
+                <div className="meta" style={{ fontWeight: 'bold', margin: '10px 0 4px' }}>חריגות משלוח UPS</div>
+                {shipmentExceptions.map((s) => (
+                  <div className="admin-list-item" key={s.track_no}>
+                    <div className="top">
+                      <b>{s.track_no}</b>
+                      <span className={`badge ship-${s.status}`}>{shipLabel(s.status)}</span>
+                    </div>
+                    {s.exception_desc_heb && <div className="meta" style={{ color: '#c0392b' }}>{s.exception_desc_heb}</div>}
+                  </div>
+                ))}
+              </>
+            )}
+          </div>
         )}
       </div>
 
@@ -229,38 +239,44 @@ export default function Dashboard({ user, onOpenOrder }) {
       <div className="settings-card">
         <div className="settings-card-title">🚚 משלוחים פעילים {activeShipments.length > 0 && `(${activeShipments.length})`}</div>
         {activeShipments.length === 0 && <div className="empty-state">אין משלוחים פעילים כרגע</div>}
-        {activeShipments.map((s) => (
-          <div className="admin-list-item" key={s.track_no}>
-            <div className="top">
-              <b>{s.track_no}</b>
-              <span className={`badge ship-${s.status}`}>{shipLabel(s.status)}</span>
-            </div>
-            {s.status_desc_heb && <div className="meta">{s.status_desc_heb}</div>}
-            {s.estimate_delivery && <div className="meta">צפי מסירה: {new Date(s.estimate_delivery).toLocaleString('he-IL')}</div>}
-            {s.orders?.length > 0 && (
-              <div className="meta">
-                הזמנות:{' '}
-                {s.orders.map((o, i) => (
-                  <span key={o.order_key}>
-                    {i > 0 && ', '}
-                    <a href="#" onClick={(e) => { e.preventDefault(); onOpenOrder(o.order_key); }}>{o.order_num}</a>
-                  </span>
-                ))}
+        {activeShipments.length > 0 && (
+          <div className="scroll-panel">
+            {activeShipments.map((s) => (
+              <div className="admin-list-item" key={s.track_no}>
+                <div className="top">
+                  <b>{s.track_no}</b>
+                  <span className={`badge ship-${s.status}`}>{shipLabel(s.status)}</span>
+                </div>
+                {s.status_desc_heb && <div className="meta">{s.status_desc_heb}</div>}
+                {s.estimate_delivery && <div className="meta">צפי מסירה: {new Date(s.estimate_delivery).toLocaleString('he-IL')}</div>}
+                {s.orders?.length > 0 && (
+                  <div className="meta">
+                    הזמנות:{' '}
+                    {s.orders.map((o, i) => (
+                      <span key={o.order_key}>
+                        {i > 0 && ', '}
+                        <a href="#" onClick={(e) => { e.preventDefault(); onOpenOrder(o.order_key); }}>{o.order_num}</a>
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
-            )}
+            ))}
           </div>
-        ))}
+        )}
       </div>
 
       {d.stuck.length > 0 && (
         <div className="settings-card">
           <div className="settings-card-title">🐢 הזמנות תקועות בליקוט</div>
-          {d.stuck.map((o) => (
-            <div className="admin-list-item" key={o.order_key} onClick={() => onOpenOrder(o.order_key)} style={{ cursor: 'pointer' }}>
-              <div className="top"><b>הזמנה {o.order_num}</b><span className="meta">{o.customer_name}</span></div>
-              <div className="meta" style={{ color: '#c0392b' }}>{Math.round(o.minutes_in_status / 60 * 10) / 10} שעות בליקוט</div>
-            </div>
-          ))}
+          <div className="scroll-panel">
+            {d.stuck.map((o) => (
+              <div className="admin-list-item" key={o.order_key} onClick={() => onOpenOrder(o.order_key)} style={{ cursor: 'pointer' }}>
+                <div className="top"><b>הזמנה {o.order_num}</b><span className="meta">{o.customer_name}</span></div>
+                <div className="meta" style={{ color: '#c0392b' }}>{Math.round(o.minutes_in_status / 60 * 10) / 10} שעות בליקוט</div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -268,20 +284,22 @@ export default function Dashboard({ user, onOpenOrder }) {
         <div className="settings-card">
           <div className="settings-card-title">👤 פילוח לפי סוכן</div>
           <div style={{ overflowX: 'auto' }}>
-            <table className="agent-table">
-              <thead>
-                <tr><th>סוכן</th><th>הזמנות פעילות</th><th>ממתין לתשובה</th></tr>
-              </thead>
-              <tbody>
-                {d.byAgent.map((a) => (
-                  <tr key={a.agent_name}>
-                    <td>{a.agent_name}</td>
-                    <td>{a.active_count}</td>
-                    <td>{a.waiting_answer_count || 0}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div className="scroll-panel">
+              <table className="agent-table">
+                <thead>
+                  <tr><th>סוכן</th><th>הזמנות פעילות</th><th>ממתין לתשובה</th></tr>
+                </thead>
+                <tbody>
+                  {d.byAgent.map((a) => (
+                    <tr key={a.agent_name}>
+                      <td>{a.agent_name}</td>
+                      <td>{a.active_count}</td>
+                      <td>{a.waiting_answer_count || 0}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}
