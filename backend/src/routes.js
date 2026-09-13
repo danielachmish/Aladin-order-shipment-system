@@ -173,7 +173,7 @@ router.post('/settings/agent-view-scope', requireRole('warehouse_manager', 'syst
 function baseOrderRow(order_key) {
   return db.prepare(`
     SELECT oc.*, ws.status, ws.priority, ws.agent_id, ws.claimed_by, ws.queue_entered_at,
-           ws.version, ws.hold_reason, ws.pre_wait_status, ws.updated_at AS wf_updated_at,
+           ws.version, ws.hold_reason, ws.pre_wait_status, ws.pending_addition_note, ws.updated_at AS wf_updated_at,
            COALESCE(u.display_name, oc.sigma_agent_name) AS agent_name, cu.display_name AS claimed_by_name
     FROM orders_cache oc
     JOIN workflow_state ws ON ws.order_key = oc.order_key
@@ -199,7 +199,7 @@ router.get('/orders', (req, res) => {
 
   let sql = `
     SELECT oc.order_key, oc.order_num, oc.customer_name, oc.total_amount, oc.line_count, oc.notes,
-           ws.status, ws.priority, ws.agent_id, ws.claimed_by, ws.queue_entered_at, ws.version,
+           ws.status, ws.priority, ws.agent_id, ws.claimed_by, ws.queue_entered_at, ws.version, ws.pending_addition_note,
            COALESCE(u.display_name, oc.sigma_agent_name) AS agent_name, cu.display_name AS claimed_by_name
     FROM orders_cache oc
     JOIN workflow_state ws ON ws.order_key = oc.order_key
@@ -313,6 +313,29 @@ router.post('/orders/:key/received-answer', requireRole('warehouse', 'warehouse_
 
 router.post('/orders/:key/priority', requireRole('warehouse_manager', 'system_admin'),
   handleWorkflowAction((key, req) => wf.setPriority(key, req.body?.priority, req.user.id)));
+
+// ---------- "תוספת" בדרך — חוסם סגירת ההזמנה עד שתסומן כהגיעה ----------
+router.post('/orders/:key/request-addition', requireRole('agent', 'warehouse_manager', 'system_admin'),
+  handleWorkflowAction((key, req) => {
+    const order = baseOrderRow(key);
+    if (req.user.role === 'agent' && order.agent_id !== req.user.id) {
+      const err = new Error('רק הסוכן המשויך להזמנה יכול לבקש תוספת');
+      err.status = 403;
+      throw err;
+    }
+    return wf.requestAddition(key, req.user.id, req.body?.note);
+  }));
+
+router.post('/orders/:key/addition-received', requireRole('agent', 'warehouse_manager', 'system_admin'),
+  handleWorkflowAction((key, req) => {
+    const order = baseOrderRow(key);
+    if (req.user.role === 'agent' && order.agent_id !== req.user.id) {
+      const err = new Error('רק הסוכן המשויך להזמנה יכול לעדכן שהתוספת הגיעה');
+      err.status = 403;
+      throw err;
+    }
+    return wf.additionReceived(key, req.user.id);
+  }));
 
 // ---------- בקשות דחיפות ----------
 router.post('/orders/:key/urgent-request', requireRole('agent'), (req, res) => {

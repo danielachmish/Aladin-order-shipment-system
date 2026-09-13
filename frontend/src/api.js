@@ -60,6 +60,8 @@ export const api = {
   requestWait: (key) => request(`/orders/${encodeURIComponent(key)}/request-wait`, { method: 'POST', body: JSON.stringify({}) }),
   receivedAnswer: (key) => request(`/orders/${encodeURIComponent(key)}/received-answer`, { method: 'POST', body: JSON.stringify({}) }),
   setPriority: (key, priority) => request(`/orders/${encodeURIComponent(key)}/priority`, { method: 'POST', body: JSON.stringify({ priority }) }),
+  requestAddition: (key, note) => request(`/orders/${encodeURIComponent(key)}/request-addition`, { method: 'POST', body: JSON.stringify({ note }) }),
+  additionReceived: (key) => request(`/orders/${encodeURIComponent(key)}/addition-received`, { method: 'POST', body: JSON.stringify({}) }),
 
   requestUrgent: (key) => request(`/orders/${encodeURIComponent(key)}/urgent-request`, { method: 'POST', body: JSON.stringify({}) }),
   pendingUrgent: () => request('/urgent-requests/pending'),

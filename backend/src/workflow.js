@@ -105,7 +105,48 @@ function closeOrder(orderKey, userId) {
   const state = getState(orderKey);
   if (!state) throw new RuleError('הזמנה לא נמצאה');
   if (state.status !== 'delivered_to_ups') throw new RuleError('ניתן לסגור רק לאחר מסירה ל UPS');
+  if (state.pending_addition_note) {
+    throw new RuleError(`לא ניתן לסגור — ממתינה תוספת: ${state.pending_addition_note}`);
+  }
   return writeTransition(orderKey, userId, 'closed', {}, 'סגירה');
+}
+
+// "תוספת" בדרך (סוכן/מנהל) — לא משנה סטטוס, רק חוסם סגירה עד שהתוספת תסומן
+// כהגיעה. ר' בקשת דניאל 14.9.2026: "שהמחסן לא יסגרו את ההזמנה עד שתגיע התוספת".
+function requestAddition(orderKey, userId, note) {
+  const state = getState(orderKey);
+  if (!state) throw new RuleError('הזמנה לא נמצאה');
+  if (!ACTIVE_STATUSES.includes(state.status)) throw new RuleError('לא ניתן לבקש תוספת במצב זה');
+  const tx = db.transaction(() => {
+    db.prepare("UPDATE workflow_state SET pending_addition_note = ?, version = version + 1, updated_at = datetime('now') WHERE order_key = ?")
+      .run(note || 'תוספת בדרך', orderKey);
+    db.prepare(`
+      INSERT INTO workflow_events (event_id, order_key, user_id, from_status, to_status, note)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(uid('evt'), orderKey, userId, state.status, state.status, `בקשת תוספת: ${note || 'תוספת בדרך'}`);
+  });
+  tx();
+  const updated = getState(orderKey);
+  emitChange('order', { order_key: orderKey, status: updated.status, version: updated.version });
+  return updated;
+}
+
+function additionReceived(orderKey, userId) {
+  const state = getState(orderKey);
+  if (!state) throw new RuleError('הזמנה לא נמצאה');
+  if (!state.pending_addition_note) throw new RuleError('אין תוספת ממתינה בהזמנה זו');
+  const tx = db.transaction(() => {
+    db.prepare("UPDATE workflow_state SET pending_addition_note = NULL, version = version + 1, updated_at = datetime('now') WHERE order_key = ?")
+      .run(orderKey);
+    db.prepare(`
+      INSERT INTO workflow_events (event_id, order_key, user_id, from_status, to_status, note)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(uid('evt'), orderKey, userId, state.status, state.status, 'התוספת הגיעה — ניתן לסגור');
+  });
+  tx();
+  const updated = getState(orderKey);
+  emitChange('order', { order_key: orderKey, status: updated.status, version: updated.version });
+  return updated;
 }
 
 // מלקט מתקדם רק קדימה; החזרה/ביטול/שינוי בעלים — מנהל בלבד עם סיבה (סעיף 4.3)
@@ -172,4 +213,5 @@ module.exports = {
   ConflictError, RuleError, ACTIVE_STATUSES,
   getState, claimOrder, finishPicking, packDone, deliverToUps, closeOrder,
   reportIssue, releaseHold, cancelOrder, requestWait, receivedAnswer, setPriority,
+  requestAddition, additionReceived,
 };

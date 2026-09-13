@@ -71,6 +71,13 @@ export default function OrdersList({ user, onOpenOrder }) {
       const s = search.trim().toLowerCase();
       list = list.filter((o) => String(o.order_num).includes(s) || (o.customer_name || '').toLowerCase().includes(s));
     }
+    // הזמנה שסומנה "הבאה בתור" / "דחופה" ע"י מנהל אמורה לעלות מיד לראש הרשימה
+    // בפועל, לא רק להראות מספר תור בתג טקסט (בקשת דניאל, 14.9.2026)
+    list = [...list].sort((a, b) => {
+      const pa = a.queue_position ? a.queue_position.position : Infinity;
+      const pb = b.queue_position ? b.queue_position.position : Infinity;
+      return pa - pb;
+    });
     return list;
   }, [orders, activeMetric, search]);
 
@@ -115,6 +122,7 @@ export default function OrdersList({ user, onOpenOrder }) {
           <div className="row2">
             <span className={`badge status-${o.status}`}>{statusLabel(o.status)}</span>
             {o.priority !== 'normal' && <span className={`badge priority-${o.priority}`}>{priorityLabel(o.priority)}</span>}
+            {o.pending_addition_note && <span className="badge status-on_hold">⏳ ממתינה תוספת</span>}
           </div>
           <div className="meta">
             {o.status === 'waiting_pick' && o.queue_position && (

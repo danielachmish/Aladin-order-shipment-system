@@ -14,6 +14,8 @@ export default function OrderDetail({ user, orderKey, onBack }) {
   const [issueReason, setIssueReason] = useState(ISSUE_REASONS[0]);
   const [issueNote, setIssueNote] = useState('');
   const [showHistory, setShowHistory] = useState(false);
+  const [showAddition, setShowAddition] = useState(false);
+  const [additionNote, setAdditionNote] = useState('');
 
   async function load() {
     try {
@@ -87,7 +89,33 @@ export default function OrderDetail({ user, orderKey, onBack }) {
         {order.status === 'picking' && <div className="meta" style={{ marginTop: 6 }}>מטפל: {order.claimed_by_name}</div>}
         {order.agent_name && <div className="meta">סוכן משויך: {order.agent_name}</div>}
         {order.status === 'on_hold' && <div className="meta" style={{ color: '#c0392b', marginTop: 6 }}>סיבה: {order.hold_reason}</div>}
+        {order.pending_addition_note && (
+          <div className="live-pill off" style={{ marginTop: 8 }}>⏳ ממתינה תוספת: {order.pending_addition_note}</div>
+        )}
       </div>
+
+      {/* ---- באנר: דחיפות + תוספת (סוכן ומנהל) ---- */}
+      {(isOwnAgent || isManager) && !['closed', 'cancelled'].includes(order.status) && (
+        <div className="btn-row" style={{ marginTop: 10, marginBottom: 4 }}>
+          {isManager ? (
+            order.priority === 'urgent'
+              ? <button className="action-btn warn" disabled={busy} onClick={() => act(() => api.setPriority(orderKey, 'normal'))}>ביטול דחיפות</button>
+              : <button className="action-btn warn" disabled={busy} onClick={() => act(() => api.setPriority(orderKey, 'urgent'))}>סמן כדחופה</button>
+          ) : (
+            pendingUrgent
+              ? <div className="live-pill off">בקשת דחיפות ממתינה לאישור מנהל</div>
+              : order.priority === 'urgent'
+                ? <div className="live-pill on">ההזמנה מסומנת כדחופה</div>
+                : <button className="action-btn warn" disabled={busy} onClick={() => act(() => api.requestUrgent(orderKey))}>דחופה</button>
+          )}
+
+          {order.pending_addition_note ? (
+            <button className="action-btn secondary" disabled={busy} onClick={() => act(() => api.additionReceived(orderKey))}>התוספת הגיעה</button>
+          ) : (
+            <button className="action-btn secondary" disabled={busy} onClick={() => setShowAddition(true)}>תוספת בדרך</button>
+          )}
+        </div>
+      )}
 
       {!['cancelled'].includes(order.status) && (
         <OrderTimeline status={order.status} preWaitStatus={order.pre_wait_status} />
@@ -118,7 +146,14 @@ export default function OrderDetail({ user, orderKey, onBack }) {
         <button className="action-btn" disabled={busy} onClick={() => act(() => api.deliverUps(orderKey, version))}>מסירה ל-UPS</button>
       )}
       {(isWarehouse || user.role === 'system_admin') && order.status === 'delivered_to_ups' && (
-        <button className="action-btn secondary" disabled={busy} onClick={() => act(() => api.closeOrder(orderKey))}>סגירת הזמנה</button>
+        <button
+          className="action-btn secondary"
+          disabled={busy || !!order.pending_addition_note}
+          title={order.pending_addition_note ? `לא ניתן לסגור — ממתינה תוספת: ${order.pending_addition_note}` : undefined}
+          onClick={() => act(() => api.closeOrder(orderKey))}
+        >
+          סגירת הזמנה{order.pending_addition_note ? ' (ממתינה תוספת)' : ''}
+        </button>
       )}
 
       {isWarehouse && ['waiting_pick', 'picking', 'ready_to_pack', 'waiting_pickup'].includes(order.status) && (
@@ -149,15 +184,6 @@ export default function OrderDetail({ user, orderKey, onBack }) {
             <button className="action-btn secondary" disabled={busy} onClick={() => act(() => api.setPriority(orderKey, 'normal'))}>החזר לתור רגיל</button>
           )}
         </div>
-      )}
-
-      {/* ---- בקשת דחיפות לסוכן ---- */}
-      {isOwnAgent && ['waiting_pick', 'picking', 'ready_to_pack', 'waiting_pickup'].includes(order.status) && (
-        pendingUrgent
-          ? <div className="live-pill off" style={{ marginTop: 12 }}>בקשת דחיפות ממתינה לאישור מנהל</div>
-          : order.priority === 'urgent'
-            ? <div className="live-pill on" style={{ marginTop: 12 }}>ההזמנה מסומנת כדחופה</div>
-            : <button className="action-btn warn" disabled={busy} onClick={() => act(() => api.requestUrgent(orderKey))}>בקשת דחיפות</button>
       )}
 
       {/* ---- משלוח ---- */}
@@ -211,6 +237,28 @@ export default function OrderDetail({ user, orderKey, onBack }) {
               שמירת דיווח
             </button>
             <button className="action-btn secondary" onClick={() => setShowIssue(false)}>ביטול</button>
+          </div>
+        </div>
+      )}
+
+      {showAddition && (
+        <div className="modal-backdrop" onClick={() => setShowAddition(false)}>
+          <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+            <h3>תוספת בדרך</h3>
+            <div className="meta" style={{ marginBottom: 8 }}>המחסן לא יוכל לסגור את ההזמנה עד שתסמנו שהתוספת הגיעה.</div>
+            <textarea placeholder="מה חסר / מה מגיע בהמשך" rows={3} value={additionNote} onChange={(e) => setAdditionNote(e.target.value)} />
+            <button
+              className="action-btn warn"
+              disabled={busy}
+              onClick={() => act(async () => {
+                await api.requestAddition(orderKey, additionNote);
+                setShowAddition(false);
+                setAdditionNote('');
+              })}
+            >
+              שמירה
+            </button>
+            <button className="action-btn secondary" onClick={() => setShowAddition(false)}>ביטול</button>
           </div>
         </div>
       )}
