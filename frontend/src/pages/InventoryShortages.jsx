@@ -33,7 +33,7 @@ export default function InventoryShortages() {
   // wa.me עם הודעה מוכנה מראש והסוכן בוחר בעצמו למי לשלוח (WhatsApp Web/אפליקציה).
   function shareWhatsApp(order, e) {
     e.stopPropagation();
-    const text = `שלום, מדברים ממחסן אלדין! 🎉\nבהזמנה מספר ${order.order_num} הפריט "${order.item_name}" (מק"ט ${order.item_code}) היה חסר — שמחים לעדכן שהוא חזר למלאי!\nרוצים שנשלח אותו אליכם?`;
+    const text = `שלום, מדברים ממחסן אלדין! 🎉\nבהזמנה מספר ${order.order_num} הפריט "${order.item_name}" (מק"ט ${order.item_code}) היה חסר. זכרנו שחיכיתם לו, ושמחים לעדכן שהוא חזר למלאי!\nאם תרצו להזמין אותו, אתם מוזמנים לפנות לסוכן שלכם.`;
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
   }
 
