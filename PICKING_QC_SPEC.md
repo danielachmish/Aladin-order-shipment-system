@@ -125,6 +125,16 @@ waiting_pick → picking → ready_for_check → ready_to_pack → waiting_picku
 
 דניאל ציין שלא תמיד זוכרים את מספר ההזמנה בזמן קישור. נוסף חיפוש חי בחלונית "קשר להזמנה אחרת": הקלדה (2+ תווים) מפעילה debounce של 300ms שקורא ל-`GET /orders?search=` הקיים (כבר תומך בהתאמה גם לפי מספר הזמנה וגם לפי שם לקוח), מציג עד 8 תוצאות (הכי חדשות קודם) בתור שורות לחיצות — לחיצה על שורה מבצעת קישור מיידי (ללא צורך באישור נוסף). כפתור "קישור לפי מספר מדויק" נשמר כגיבוי ידני. מומש ב-`OrderDetail.jsx` + עיצוב `.link-search-results`/`.link-search-row` ב-`styles.css`.
 
-## 11. רעיון ממתין: ברקודים במסך הליקוט
+## 11. מיקום פיזי + ברקוד — מומש ונבדק (14.9.2026)
 
-דניאל אישר שלסיגמא יש עמודת ברקוד. חסום על אותה בעיה כמו עמודת המיקום הפיזי (סעיף 2) — צריך סקריפט אבחון קצר שירוץ מול ה-SQL Server של סיגמא כדי לזהות את שם העמודה/הטבלה המדויקים (הן למיקום והן לברקוד), לפני שאפשר להרחיב את ה-Bridge (`bridge/sync.js`) למשוך אותם ואת `sigmaIngest.js`/`PickChecklist.jsx` להציג אותם בפועל. הסקריפט טרם נשלח לדניאל.
+דניאל הריץ את `bridge/find-item-columns.js` מול ה-SQL Server האמיתי של סיגמא. תוצאה:
+
+- **מיקום פיזי:** עמודת `stock_place` בטבלת קטלוג הפריטים הגלובלית `TDemoPritim` (מזוהה לפי `prit_ID` — אותו `prit_ID` שכבר נשלף כ-`itemCode` בשורות ההזמנה מ-`azmanot`). הטבלה משותפת לכל החברות (אין בה עמודת CompanyID), כך שה-JOIN הוא פשוט לפי `prit_ID` בלבד.
+- **ברקוד:** אותה טבלה, עמודת `barCode`. כגיבוי (אם ריק בקטלוג), נופל בחזרה ל-`azmanot.FBarCode` שכבר קיים על שורת ההזמנה עצמה.
+
+**מומש:**
+- `bridge/sync.js` — שאילתת שורות ההזמנה עברה מ-`SELECT ... FROM azmanot` פשוט ל-`LEFT JOIN TDemoPritim` לפי `prit_ID`, עם `NULLIF(LTRIM(RTRIM(...)), '')` כדי להפוך מחרוזות ריקות ל-NULL אמיתי, ו-`COALESCE` לברקוד (קטלוג → azmanot.FBarCode).
+- `backend/src/schema.sql` / `db.js` — נוספה עמודת `order_items_cache.barcode` (מיקום כבר היה קיים מקודם, פשוט לא היה מלא).
+- `backend/src/sigmaIngest.js` — `insertItem` מעדכן גם `barcode` (באותו `ON CONFLICT ... DO UPDATE` הזהיר שכבר קיים ללקיטה/בדיקה — לא נוגע בשדות הפנימיים).
+- `frontend/src/components/PickChecklist.jsx` — הברקוד מוצג בשורת ה-meta ליד מק"ט וכמות ("· ברקוד: ...").
+- **נבדק:** קריאה ישירה ל-`sigmaIngest.ingestOrders` עם `location`/`barcode` מדומים אימתה שהערכים נשמרים נכון ב-`order_items_cache`. הבדיקה מול ה-SQL Server האמיתי (JOIN בפועל) עדיין תלויה בהרצת ה-Bridge המלא אצל דניאל בסביבת הייצור.

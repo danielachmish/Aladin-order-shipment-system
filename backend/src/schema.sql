@@ -52,7 +52,8 @@ CREATE TABLE IF NOT EXISTS order_items_cache (
   item_name   TEXT,
   quantity    REAL,
   price       REAL,
-  location    TEXT, -- מיקום פיזי במחסן; כרגע תמיד NULL, ה-Bridge עוד לא ממלא (ר' סעיף 7 באיפיון)
+  location    TEXT, -- מיקום פיזי במחסן (סיגמא: pratim/QryIndexPritim.stock_place, ר' סעיף 11 ב-PICKING_QC_SPEC.md)
+  barcode     TEXT, -- ברקוד הפריט (סיגמא: pratim/QryIndexPritim.barCode, אותו מקור)
   note        TEXT,
   qty_picked  REAL,    -- כמות שנלקטה בפועל; NULL = עוד לא טופלה
   pick_status TEXT,    -- 'picked' | 'partial' | 'missing'

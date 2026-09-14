@@ -16,7 +16,7 @@ function orderKey(companyId, sidra, num) {
 }
 
 // order: { companyId, sidra, orderNum, customerName, orderDate, deliveryDate,
-//          totalAmount, notes, sourceStatus, agentName, items: [{lineNo,itemCode,itemName,quantity,price,location}] }
+//          totalAmount, notes, sourceStatus, agentName, items: [{lineNo,itemCode,itemName,quantity,price,location,barcode}] }
 function ingestOrders(orders) {
   const insertOrder = db.prepare(`
     INSERT INTO orders_cache (order_key, company_id, sidra, order_num, customer_name, order_date, delivery_date, total_amount, line_count, notes, source_status, sigma_agent_name, sigma_created_at, synced_at)
@@ -35,12 +35,12 @@ function ingestOrders(orders) {
   // להופיע ב"פתוחות" עד שהיא נסגרת בפועל. עכשיו מעדכנים רק את השדות שמגיעים
   // מסיגמא, ולא נוגעים בשדות הליקוט/בדיקה הפנימיים שלנו.
   const insertItem = db.prepare(`
-    INSERT INTO order_items_cache (order_key, line_no, item_code, item_name, quantity, price, location, note)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO order_items_cache (order_key, line_no, item_code, item_name, quantity, price, location, barcode, note)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(order_key, line_no) DO UPDATE SET
       item_code = excluded.item_code, item_name = excluded.item_name,
       quantity = excluded.quantity, price = excluded.price,
-      location = excluded.location
+      location = excluded.location, barcode = excluded.barcode
   `);
   // "הזמנה חדשה נכנסת מיד לתור" (סעיף 6.1.4) — רק אם עוד אין לה מצב עבודה
   const insertWorkflowIfNew = db.prepare(`
@@ -62,7 +62,7 @@ function ingestOrders(orders) {
         sigma_created_at: o.createdAt || null,
       });
       (o.items || []).forEach((it, idx) => {
-        insertItem.run(key, it.lineNo ?? idx + 1, it.itemCode, it.itemName, it.quantity, it.price, it.location || null, null);
+        insertItem.run(key, it.lineNo ?? idx + 1, it.itemCode, it.itemName, it.quantity, it.price, it.location || null, it.barcode || null, null);
       });
       const wf = insertWorkflowIfNew.run(key);
       existed ? updated++ : created++;

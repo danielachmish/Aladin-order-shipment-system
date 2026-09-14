@@ -30,5 +30,6 @@ ensureColumn('order_items_cache', 'pick_note', 'TEXT');
 ensureColumn('order_items_cache', 'checked', "INTEGER NOT NULL DEFAULT 0");
 ensureColumn('order_items_cache', 'check_note', 'TEXT');
 ensureColumn('workflow_state', 'linked_group_id', 'TEXT');
+ensureColumn('order_items_cache', 'barcode', 'TEXT'); // ר' PICKING_QC_SPEC.md סעיף 11
 
 module.exports = { db, isNew };

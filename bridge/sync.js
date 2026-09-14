@@ -127,8 +127,15 @@ async function fetchOpenOrders() {
       .input('sidra', sql.Int, h.sidra)
       .input('orderNum', sql.Int, h.azmana_num)
       .query(`
-        SELECT pline AS [lineNo], prit_ID AS [itemCode], pname AS [itemName], quant AS [quantity], pprice AS [price]
-        FROM azmanot WHERE CompanyID = @companyId AND sidra = @sidra AND azmana_num = @orderNum ORDER BY pline
+        -- location/barcode: עמודות מקטלוג הפריטים הגלובלי (TDemoPritim.stock_place/barCode),
+        -- לא מטבלת שורות ההזמנה עצמה — אותרו ע"י bridge/find-item-columns.js (14.9.2026,
+        -- ר' PICKING_QC_SPEC.md סעיף 11). נופל בחזרה ל-azmanot.FBarCode אם אין ברקוד בקטלוג.
+        SELECT a.pline AS [lineNo], a.prit_ID AS [itemCode], a.pname AS [itemName], a.quant AS [quantity], a.pprice AS [price],
+               NULLIF(LTRIM(RTRIM(pr.stock_place)), '') AS [location],
+               COALESCE(NULLIF(LTRIM(RTRIM(pr.barCode)), ''), NULLIF(LTRIM(RTRIM(a.FBarCode)), '')) AS [barcode]
+        FROM azmanot a
+        LEFT JOIN TDemoPritim pr ON pr.prit_ID = a.prit_ID
+        WHERE a.CompanyID = @companyId AND a.sidra = @sidra AND a.azmana_num = @orderNum ORDER BY a.pline
       `);
     orders.push({
       companyId: h.CompanyID, sidra: h.sidra, orderNum: h.azmana_num,

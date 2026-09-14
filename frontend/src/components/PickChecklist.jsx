@@ -59,7 +59,7 @@ export default function PickChecklist({ mode, order, items, onChanged, busy, set
               {it.location && <span className="pick-location-badge">{it.location}</span>}
               <div className="pick-item-name">{it.item_name}</div>
             </div>
-            <div className="meta">{it.item_code} · הוזמן: {it.quantity}</div>
+            <div className="meta">{it.item_code} · הוזמן: {it.quantity}{it.barcode ? ` · ברקוד: ${it.barcode}` : ''}</div>
 
             {mode === 'pick' && (
               <>
