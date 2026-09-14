@@ -617,7 +617,7 @@ router.get('/inventory/shortages', requireRole('warehouse_manager', 'system_admi
   const days = Number(req.query.days) > 0 ? Number(req.query.days) : 1;
   const rows = db.prepare(`
     SELECT oic.order_key, oic.item_code, oic.item_name, oic.quantity, oic.qty_picked, oic.pick_status,
-           oc.order_num, oc.customer_name
+           oc.order_num, oc.customer_name, oc.sigma_agent_name AS agent_name
     FROM order_items_cache oic
     JOIN orders_cache oc ON oc.order_key = oic.order_key
     WHERE oic.pick_status IN ('missing', 'partial')
@@ -634,7 +634,10 @@ router.get('/inventory/shortages', requireRole('warehouse_manager', 'system_admi
     }
     const entry = byItem.get(r.item_code);
     entry.total_missing += missingQty;
-    entry.orders.push({ order_key: r.order_key, order_num: r.order_num, customer_name: r.customer_name, missing_qty: missingQty });
+    entry.orders.push({
+      order_key: r.order_key, order_num: r.order_num, customer_name: r.customer_name,
+      agent_name: r.agent_name, missing_qty: missingQty, item_name: r.item_name, item_code: r.item_code,
+    });
   }
   const items = Array.from(byItem.values()).sort((a, b) => b.total_missing - a.total_missing);
   res.json({ items, days });
