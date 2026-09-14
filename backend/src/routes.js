@@ -396,6 +396,20 @@ router.post('/orders/:key/items/:lineNo/check', requireRole('warehouse', 'wareho
   }
 });
 
+// תיקון בודק לשורה שהמלקט כבר סימן (למשל: המלקט טעה, בפועל חסר/הכמות
+// שונה, או להפך — כן נמצא). ר' PICKING_QC_SPEC.md סעיף 12 (בקשת דניאל 14.9.2026)
+router.post('/orders/:key/items/:lineNo/correct-pick', requireRole('warehouse', 'warehouse_manager'), (req, res) => {
+  try {
+    const key = decodeURIComponent(req.params.key);
+    const lineNo = Number(req.params.lineNo);
+    const { qtyPicked, pickStatus, checkNote } = req.body || {};
+    const item = wf.correctPickedItem(key, lineNo, req.user.id, { qtyPicked, pickStatus, checkNote });
+    res.json({ ok: true, item });
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message });
+  }
+});
+
 router.post('/orders/:key/finish-check', requireRole('warehouse', 'warehouse_manager'),
   handleWorkflowAction((key, req) => wf.finishCheck(key, req.user.id, req.body?.expectedVersion)));
 
@@ -532,7 +546,7 @@ router.get('/history', requireRole('warehouse', 'warehouse_manager', 'system_adm
 
   let sql = `
     SELECT oc.order_key, oc.order_num, oc.customer_name, oc.total_amount,
-           ws.status, ws.priority, ws.updated_at
+           ws.status, ws.priority, ws.updated_at, ws.shortage_invoiced_at, ws.shortage_invoiced_by
     FROM orders_cache oc
     JOIN workflow_state ws ON ws.order_key = oc.order_key
     WHERE ws.status IN ('ready_for_check','ready_to_pack','waiting_pickup','delivered_to_ups','closed')
@@ -564,7 +578,7 @@ router.get('/history', requireRole('warehouse', 'warehouse_manager', 'system_adm
   const userStmt = db.prepare(`SELECT display_name FROM users WHERE user_id = ?`);
   // דוח חוסרים למזכירה — ר' PICKING_QC_SPEC.md סעיף 5.3 (סוכם עם דניאל 14.9.2026)
   const shortagesStmt = db.prepare(`
-    SELECT item_code, item_name, quantity AS qty_ordered, qty_picked, pick_status, pick_note
+    SELECT item_code, item_name, quantity AS qty_ordered, qty_picked, pick_status, pick_note, check_note
     FROM order_items_cache
     WHERE order_key = ? AND pick_status IN ('missing', 'partial')
     ORDER BY line_no
@@ -580,12 +594,50 @@ router.get('/history', requireRole('warehouse', 'warehouse_manager', 'system_adm
       pick_started_at: start ? start.created_at : null,
       picked_by: start && start.user_id ? (userStmt.get(start.user_id) || {}).display_name : null,
       pick_finished_at: end ? end.created_at : null,
+      shortage_invoiced_by_name: o.shortage_invoiced_by ? (userStmt.get(o.shortage_invoiced_by) || {}).display_name : null,
       issues,
       shortages,
     };
   });
 
   res.json({ orders: result, sinceDays });
+});
+
+// דוח חוסרים למזכירה — סימון/ביטול "טופל" (הופקה חשבונית מתוקנת) ברמת
+// ההזמנה כולה. ר' PICKING_QC_SPEC.md סעיף 12 (בקשת דניאל 14.9.2026).
+router.post('/orders/:key/mark-shortage-invoiced', requireRole('warehouse_manager', 'system_admin'),
+  handleWorkflowAction((key, req) => wf.markShortageInvoiced(key, req.user.id)));
+
+router.post('/orders/:key/unmark-shortage-invoiced', requireRole('warehouse_manager', 'system_admin'),
+  handleWorkflowAction((key, req) => wf.unmarkShortageInvoiced(key, req.user.id)));
+
+// "חוסרי מלאי היום" — תצוגה מרוכזת לפי מק"ט למנהל מחסן (לא לפי הזמנה, כמו
+// דוח החוסרים למזכירה — כאן המטרה לדעת מה חסר במלאי בפועל). ר' בקשת דניאל 14.9.2026.
+router.get('/inventory/shortages', requireRole('warehouse_manager', 'system_admin'), (req, res) => {
+  const days = Number(req.query.days) > 0 ? Number(req.query.days) : 1;
+  const rows = db.prepare(`
+    SELECT oic.order_key, oic.item_code, oic.item_name, oic.quantity, oic.qty_picked, oic.pick_status,
+           oc.order_num, oc.customer_name
+    FROM order_items_cache oic
+    JOIN orders_cache oc ON oc.order_key = oic.order_key
+    WHERE oic.pick_status IN ('missing', 'partial')
+      AND oic.pick_marked_at >= datetime('now', ?)
+    ORDER BY oic.pick_marked_at DESC
+  `).all(`-${days} days`);
+
+  const byItem = new Map();
+  for (const r of rows) {
+    const missingQty = r.pick_status === 'missing' ? r.quantity : Math.max(0, (r.quantity || 0) - (r.qty_picked || 0));
+    if (missingQty <= 0) continue;
+    if (!byItem.has(r.item_code)) {
+      byItem.set(r.item_code, { item_code: r.item_code, item_name: r.item_name, total_missing: 0, orders: [] });
+    }
+    const entry = byItem.get(r.item_code);
+    entry.total_missing += missingQty;
+    entry.orders.push({ order_key: r.order_key, order_num: r.order_num, customer_name: r.customer_name, missing_qty: missingQty });
+  }
+  const items = Array.from(byItem.values()).sort((a, b) => b.total_missing - a.total_missing);
+  res.json({ items, days });
 });
 
 // ---------- לשונית "משלוחים": כל מה שכבר נמסר בפועל ל-UPS, עם סטטוס עדכני ----------

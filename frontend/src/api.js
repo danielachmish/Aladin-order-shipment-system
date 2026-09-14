@@ -53,6 +53,7 @@ export const api = {
   finishPicking: (key, expectedVersion) => request(`/orders/${encodeURIComponent(key)}/finish-picking`, { method: 'POST', body: JSON.stringify({ expectedVersion }) }),
   pickItem: (key, lineNo, data) => request(`/orders/${encodeURIComponent(key)}/items/${lineNo}/pick`, { method: 'POST', body: JSON.stringify(data) }),
   checkItem: (key, lineNo, data) => request(`/orders/${encodeURIComponent(key)}/items/${lineNo}/check`, { method: 'POST', body: JSON.stringify(data) }),
+  correctPickItem: (key, lineNo, data) => request(`/orders/${encodeURIComponent(key)}/items/${lineNo}/correct-pick`, { method: 'POST', body: JSON.stringify(data) }),
   finishCheck: (key, expectedVersion) => request(`/orders/${encodeURIComponent(key)}/finish-check`, { method: 'POST', body: JSON.stringify({ expectedVersion }) }),
   packDone: (key, expectedVersion) => request(`/orders/${encodeURIComponent(key)}/pack-done`, { method: 'POST', body: JSON.stringify({ expectedVersion }) }),
   deliverUps: (key, expectedVersion) => request(`/orders/${encodeURIComponent(key)}/deliver-ups`, { method: 'POST', body: JSON.stringify({ expectedVersion }) }),
@@ -79,6 +80,12 @@ export const api = {
   history: (params = {}) => {
     const qs = new URLSearchParams(params).toString();
     return request('/history' + (qs ? `?${qs}` : ''));
+  },
+  markShortageInvoiced: (key) => request(`/orders/${encodeURIComponent(key)}/mark-shortage-invoiced`, { method: 'POST', body: JSON.stringify({}) }),
+  unmarkShortageInvoiced: (key) => request(`/orders/${encodeURIComponent(key)}/unmark-shortage-invoiced`, { method: 'POST', body: JSON.stringify({}) }),
+  inventoryShortages: (params = {}) => {
+    const qs = new URLSearchParams(params).toString();
+    return request('/inventory/shortages' + (qs ? `?${qs}` : ''));
   },
 
   dashboard: () => request('/dashboard'),

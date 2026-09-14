@@ -60,6 +60,7 @@ CREATE TABLE IF NOT EXISTS order_items_cache (
   pick_note   TEXT,    -- הערת מלקט (בעיקר לחוסר)
   checked     INTEGER NOT NULL DEFAULT 0, -- 0/1 — האם הבודק אישר את השורה
   check_note  TEXT,    -- הערת בודק אם תיקן משהו
+  pick_marked_at TEXT, -- מתי סומן pick_status לאחרונה (מלקט או תיקון בודק) — לדוח "חוסרי מלאי היום"
   PRIMARY KEY (order_key, line_no)
 );
 
@@ -80,6 +81,8 @@ CREATE TABLE IF NOT EXISTS workflow_state (
   delivery_method TEXT, -- ups | self_pickup — נקבע ב-waiting_pickup (סעיף בקשת דניאל, 14.9.2026)
   linked_group_id TEXT, -- הזמנות מקושרות ידנית (למשל תוספת שהגיעה כהזמנה נפרדת) —
                          -- כל ההזמנות עם אותו group id "נצמדות" לאותו מקום בתור. ר' בקשת דניאל 14.9.2026.
+  shortage_invoiced_at TEXT, -- מזכירה סימנה שהוציאה חשבונית מתוקנת על החוסרים (ר' PICKING_QC_SPEC.md סעיף 12)
+  shortage_invoiced_by TEXT,
   updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (order_key) REFERENCES orders_cache(order_key)
 );

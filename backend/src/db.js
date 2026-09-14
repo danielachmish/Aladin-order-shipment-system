@@ -31,5 +31,8 @@ ensureColumn('order_items_cache', 'checked', "INTEGER NOT NULL DEFAULT 0");
 ensureColumn('order_items_cache', 'check_note', 'TEXT');
 ensureColumn('workflow_state', 'linked_group_id', 'TEXT');
 ensureColumn('order_items_cache', 'barcode', 'TEXT'); // ר' PICKING_QC_SPEC.md סעיף 11
+ensureColumn('order_items_cache', 'pick_marked_at', 'TEXT');
+ensureColumn('workflow_state', 'shortage_invoiced_at', 'TEXT');
+ensureColumn('workflow_state', 'shortage_invoiced_by', 'TEXT');
 
 module.exports = { db, isNew };

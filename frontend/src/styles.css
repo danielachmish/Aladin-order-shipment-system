@@ -93,6 +93,11 @@ body {
 .order-card .row2 { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
 .order-card .meta { font-size: 12px; color: var(--muted); margin-top: 6px; }
 
+/* חוסר שעדיין לא סומן כטופל (הופקה חשבונית) — בקשת דניאל 14.9.2026 */
+.order-card.shortage-needs-attention {
+  border-color: #e0a34d; background: #fff8ef;
+}
+
 .badge {
   display: inline-block; font-size: 11px; padding: 3px 8px; border-radius: 8px; font-weight: 600;
 }

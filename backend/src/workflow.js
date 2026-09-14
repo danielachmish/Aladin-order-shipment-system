@@ -89,7 +89,7 @@ function updateItemPick(orderKey, lineNo, userId, { qtyPicked, pickStatus, pickN
   if (!item) throw new RuleError('שורת פריט לא נמצאה');
 
   db.prepare(`
-    UPDATE order_items_cache SET qty_picked = ?, pick_status = ?, pick_note = ?
+    UPDATE order_items_cache SET qty_picked = ?, pick_status = ?, pick_note = ?, pick_marked_at = datetime('now')
     WHERE order_key = ? AND line_no = ?
   `).run(pickStatus === 'missing' ? 0 : qtyPicked, pickStatus, pickNote || null, orderKey, lineNo);
 
@@ -126,6 +126,30 @@ function updateItemCheck(orderKey, lineNo, userId, { checked, checkNote }) {
     UPDATE order_items_cache SET checked = ?, check_note = ?
     WHERE order_key = ? AND line_no = ?
   `).run(checked ? 1 : 0, checkNote || null, orderKey, lineNo);
+
+  emitChange('order', { order_key: orderKey, status: state.status, version: state.version });
+  return db.prepare('SELECT * FROM order_items_cache WHERE order_key = ? AND line_no = ?').get(orderKey, lineNo);
+}
+
+// תיקון בודק (בקשת דניאל 14.9.2026): הבודק גילה שהמלקט טעה (למשל סימן "נלקט
+// הכל" אבל בפועל חלק חסר, או להפך — סימן "חסר" אבל בעצם כן נמצא) — הבודק
+// יכול לשנות בעצמו את pick_status/qty_picked של השורה, לא רק לאשר/לדחות.
+// שומרים את הערת המלקט המקורית (pick_note) בלי לגעת בה, וכותבים את הסבר
+// הבודק ל-check_note בנפרד — כדי שתישאר שקיפות מלאה מה כל אחד אמר. תיקון
+// כזה מסמן את השורה כמאושרת (checked=1) — הבודק כבר ראה/קבע אותה בעצמו.
+function correctPickedItem(orderKey, lineNo, userId, { qtyPicked, pickStatus, checkNote }) {
+  const state = getState(orderKey);
+  if (!state) throw new RuleError('הזמנה לא נמצאה');
+  if (state.status !== 'ready_for_check') throw new RuleError('ניתן לתקן שורה רק בשלב הבדיקה');
+  if (!['picked', 'partial', 'missing'].includes(pickStatus)) throw new RuleError('סטטוס ליקוט לא תקין');
+  const item = db.prepare('SELECT 1 FROM order_items_cache WHERE order_key = ? AND line_no = ?').get(orderKey, lineNo);
+  if (!item) throw new RuleError('שורת פריט לא נמצאה');
+
+  db.prepare(`
+    UPDATE order_items_cache
+    SET qty_picked = ?, pick_status = ?, checked = 1, check_note = ?, pick_marked_at = datetime('now')
+    WHERE order_key = ? AND line_no = ?
+  `).run(pickStatus === 'missing' ? 0 : qtyPicked, pickStatus, checkNote || null, orderKey, lineNo);
 
   emitChange('order', { order_key: orderKey, status: state.status, version: state.version });
   return db.prepare('SELECT * FROM order_items_cache WHERE order_key = ? AND line_no = ?').get(orderKey, lineNo);
@@ -282,6 +306,49 @@ function setPriority(orderKey, priority, managerId) {
   return updated;
 }
 
+// דוח חוסרים למזכירה (בקשת דניאל 14.9.2026): מזכירה (יוזר warehouse_manager)
+// מסמנת ברמת ההזמנה כולה שהוציאה חשבונית מתוקנת על כל החוסרים בה. עצמאי
+// לגמרי מסטטוס העבודה של ההזמנה (אפשר לסמן גם על הזמנה סגורה).
+function markShortageInvoiced(orderKey, userId) {
+  const state = getState(orderKey);
+  if (!state) throw new RuleError('הזמנה לא נמצאה');
+  const tx = db.transaction(() => {
+    db.prepare(`
+      UPDATE workflow_state
+      SET shortage_invoiced_at = datetime('now'), shortage_invoiced_by = ?, version = version + 1, updated_at = datetime('now')
+      WHERE order_key = ?
+    `).run(userId, orderKey);
+    db.prepare(`
+      INSERT INTO workflow_events (event_id, order_key, user_id, from_status, to_status, note)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(uid('evt'), orderKey, userId, state.status, state.status, 'סומן כטופל — הופקה חשבונית מתוקנת על החוסרים');
+  });
+  tx();
+  const updated = getState(orderKey);
+  emitChange('order', { order_key: orderKey, status: updated.status, version: updated.version });
+  return updated;
+}
+
+function unmarkShortageInvoiced(orderKey, userId) {
+  const state = getState(orderKey);
+  if (!state) throw new RuleError('הזמנה לא נמצאה');
+  const tx = db.transaction(() => {
+    db.prepare(`
+      UPDATE workflow_state
+      SET shortage_invoiced_at = NULL, shortage_invoiced_by = NULL, version = version + 1, updated_at = datetime('now')
+      WHERE order_key = ?
+    `).run(orderKey);
+    db.prepare(`
+      INSERT INTO workflow_events (event_id, order_key, user_id, from_status, to_status, note)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(uid('evt'), orderKey, userId, state.status, state.status, 'בוטל סימון "טופל" על החוסרים');
+  });
+  tx();
+  const updated = getState(orderKey);
+  emitChange('order', { order_key: orderKey, status: updated.status, version: updated.version });
+  return updated;
+}
+
 // הזמנות מקושרות — כשלקוח מוסיף פריטים בהזמנה נפרדת בסיגמא (יום אחרי, למשל),
 // ההזמנה החדשה יורדת לסוף התור לפי הזמן שלה. קישור ידני "מצמיד" אותה למקום
 // התור של ההזמנה הישנה (ר' PICKING_QC_SPEC.md / בקשת דניאל 14.9.2026). בכוונה
@@ -356,6 +423,7 @@ module.exports = {
   getState, claimOrder, finishPicking, packDone, deliverToUps, selfPickup, closeOrder,
   reportIssue, releaseHold, cancelOrder, requestWait, receivedAnswer, setPriority,
   requestAddition, additionReceived,
-  updateItemPick, updateItemCheck, finishCheck,
+  updateItemPick, updateItemCheck, finishCheck, correctPickedItem,
+  markShortageInvoiced, unmarkShortageInvoiced,
   linkOrders, unlinkOrder,
 };

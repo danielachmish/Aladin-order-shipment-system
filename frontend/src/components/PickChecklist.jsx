@@ -48,6 +48,22 @@ export default function PickChecklist({ mode, order, items, onChanged, busy, set
     }
   }
 
+  // תיקון בודק: המלקט טעה (סימן "נלקט" אבל בפועל חסר/כמות שונה, או להפך —
+  // סימן "חסר" אבל בעצם כן נמצא). ר' PICKING_QC_SPEC.md סעיף 12.
+  async function correctPick(item, pickStatus, qtyPicked, checkNote) {
+    setBusy(true);
+    setError('');
+    try {
+      await api.correctPickItem(order.order_key, item.line_no, { qtyPicked, pickStatus, checkNote: checkNote || null });
+      setEditingLine(null);
+      await onChanged();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div>
       {sorted.map((it) => {
@@ -110,29 +126,68 @@ export default function PickChecklist({ mode, order, items, onChanged, busy, set
             )}
 
             {mode === 'check' && (
-              isMissing ? (
-                <div className="meta pick-status-line missing">❌ לא נמצא בליקוט — אין מה לבדוק</div>
-              ) : (
-                <>
+              <>
+                {isMissing ? (
+                  <div className="meta pick-status-line missing">❌ לא נמצא בליקוט — אין מה לבדוק{it.pick_note ? ` · ${it.pick_note}` : ''}</div>
+                ) : (
                   <div className="meta">נלקט: {it.qty_picked} מתוך {it.quantity}{it.pick_note ? ` · ${it.pick_note}` : ''}</div>
-                  {editingLine === it.line_no ? (
-                    <div className="pick-edit-row">
-                      <input type="text" value={editNote} onChange={(e) => setEditNote(e.target.value)} placeholder="הערת בדיקה" />
-                      <div className="btn-row">
-                        <button className="action-btn secondary" disabled={busy} onClick={() => markChecked(it, true, editNote)}>שמירה + אישור</button>
-                        <button className="action-btn secondary" onClick={() => setEditingLine(null)}>ביטול</button>
-                      </div>
-                    </div>
-                  ) : it.checked ? (
-                    <div className="meta pick-status-line picked">✓ מאושר{it.check_note ? ` · ${it.check_note}` : ''}</div>
-                  ) : (
+                )}
+
+                {editingLine === it.line_no ? (
+                  // תיקון בודק — יכול לשנות את מה שהמלקט קבע (כולל להפוך "חסר" ל"נמצא" ולהפך)
+                  <div className="pick-edit-row">
+                    <input
+                      type="number" min="0" value={editQty}
+                      onChange={(e) => setEditQty(e.target.value)}
+                      placeholder="כמות בפועל"
+                    />
+                    <input
+                      type="text" value={editNote}
+                      onChange={(e) => setEditNote(e.target.value)}
+                      placeholder="הערת בודק (למה תיקנת)"
+                    />
                     <div className="btn-row">
-                      <button className="action-btn" disabled={busy} onClick={() => markChecked(it, true, null)}>✓ מאשר</button>
-                      <button className="action-btn secondary" disabled={busy} onClick={() => { setEditingLine(it.line_no); setEditNote(''); }}>תיקון</button>
+                      <button
+                        className="action-btn secondary" disabled={busy || editQty === ''}
+                        onClick={() => correctPick(it, Number(editQty) >= it.quantity ? 'picked' : 'partial', Number(editQty) || 0, editNote)}
+                      >
+                        שמירה + אישור
+                      </button>
+                      <button className="action-btn danger" disabled={busy} onClick={() => correctPick(it, 'missing', 0, editNote)}>לא נמצא בכלל</button>
+                      <button className="action-btn secondary" onClick={() => setEditingLine(null)}>ביטול</button>
                     </div>
-                  )}
-                </>
-              )
+                  </div>
+                ) : isMissing ? (
+                  <div className="btn-row">
+                    <button
+                      className="action-btn secondary" disabled={busy}
+                      onClick={() => { setEditingLine(it.line_no); setEditQty(String(it.quantity)); setEditNote(''); }}
+                    >
+                      תיקון — בעצם כן נמצא
+                    </button>
+                  </div>
+                ) : it.checked ? (
+                  <div className="btn-row">
+                    <div className="meta pick-status-line picked">✓ מאושר{it.check_note ? ` · ${it.check_note}` : ''}</div>
+                    <button
+                      className="action-btn secondary" disabled={busy}
+                      onClick={() => { setEditingLine(it.line_no); setEditQty(it.qty_picked != null ? String(it.qty_picked) : ''); setEditNote(''); }}
+                    >
+                      תיקון
+                    </button>
+                  </div>
+                ) : (
+                  <div className="btn-row">
+                    <button className="action-btn" disabled={busy} onClick={() => markChecked(it, true, null)}>✓ מאשר</button>
+                    <button
+                      className="action-btn secondary" disabled={busy}
+                      onClick={() => { setEditingLine(it.line_no); setEditQty(it.qty_picked != null ? String(it.qty_picked) : ''); setEditNote(''); }}
+                    >
+                      תיקון
+                    </button>
+                  </div>
+                )}
+              </>
             )}
           </div>
         );

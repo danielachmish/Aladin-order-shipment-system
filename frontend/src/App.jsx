@@ -8,6 +8,7 @@ import PendingOrders from './pages/PendingOrders.jsx';
 import Shipments from './pages/Shipments.jsx';
 import Dashboard from './components/Dashboard.jsx';
 import ManagementTools from './pages/ManagementTools.jsx';
+import InventoryShortages from './pages/InventoryShortages.jsx';
 import { getToken, getUser, clearSession } from './api.js';
 import { roleLabel } from './labels.js';
 import { connectLive, onLive, isConnected } from './ws.js';
@@ -95,11 +96,13 @@ export default function App() {
         ) : tab === 'exceptions' ? (
           <Exceptions user={user} onOpenOrder={openOrder} />
         ) : tab === 'history' ? (
-          <History onOpenOrder={openOrder} />
+          <History user={user} onOpenOrder={openOrder} />
         ) : tab === 'pending' ? (
           <PendingOrders />
         ) : tab === 'shipments' ? (
           <Shipments onOpenOrder={openOrder} />
+        ) : tab === 'inventory' ? (
+          <InventoryShortages />
         ) : (
           <ManagementTools />
         )}
@@ -131,6 +134,11 @@ export default function App() {
           <button className={tab === 'shipments' ? 'active' : ''} onClick={() => setTab('shipments')}>
             <span className="icon">🚚</span>משלוחים
           </button>
+          {isManager && (
+            <button className={tab === 'inventory' ? 'active' : ''} onClick={() => setTab('inventory')}>
+              <span className="icon">📉</span>חוסרי מלאי
+            </button>
+          )}
           {isManager && (
             <button className={tab === 'management' ? 'active' : ''} onClick={() => setTab('management')}>
               <span className="icon">🛠️</span>כלי ניהול
