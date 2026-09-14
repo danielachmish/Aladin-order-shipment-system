@@ -3,6 +3,7 @@ export const STATUS_LABELS = {
   open: 'פתוחה',
   waiting_pick: 'ממתינה לליקוט',
   picking: 'בליקוט',
+  ready_for_check: 'בבדיקה',
   ready_to_pack: 'מוכנה לאריזה',
   waiting_pickup: 'ממתינה לאיסוף',
   delivered_to_ups: 'נמסרה ל-UPS',

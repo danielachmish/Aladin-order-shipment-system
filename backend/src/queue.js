@@ -11,22 +11,47 @@ function rankRow(row) {
   return PRIORITY_RANK[row.priority] ?? 2;
 }
 
+// הזמנות מקושרות ידנית (ר' workflow.js linkOrders): "נצמדות" למקום התור של
+// ההזמנה הישנה ביותר בקבוצה, גם אם היא עצמה כרגע בסטטוס אחר (למשל כבר
+// בליקוט) — לכן בודקים לפי כל workflow_state, לא רק לפי rows של הסטטוס הזה.
+function groupMinCreatedAt(groupId) {
+  const row = db.prepare(`
+    SELECT MIN(oc.sigma_created_at) AS min_created
+    FROM workflow_state ws JOIN orders_cache oc ON oc.order_key = ws.order_key
+    WHERE ws.linked_group_id = ?
+  `).get(groupId);
+  return row ? row.min_created : null;
+}
+
 // כל ההזמנות במצב נתון (בדרך כלל waiting_pick), ממוינות לפי כללי התור
 function queueForStatus(status) {
   const rows = db.prepare(`
-    SELECT ws.order_key, ws.priority, ws.queue_entered_at, ws.agent_id,
+    SELECT ws.order_key, ws.priority, ws.queue_entered_at, ws.agent_id, ws.linked_group_id,
            oc.order_num, oc.customer_name, oc.order_date, oc.sigma_created_at
     FROM workflow_state ws
     JOIN orders_cache oc ON oc.order_key = ws.order_key
     WHERE ws.status = ?
   `).all(status);
 
+  const groupMinCache = {};
+  function effectiveCreatedAt(row) {
+    if (!row.linked_group_id) return row.sigma_created_at || '';
+    if (!(row.linked_group_id in groupMinCache)) {
+      groupMinCache[row.linked_group_id] = groupMinCreatedAt(row.linked_group_id);
+    }
+    return groupMinCache[row.linked_group_id] || row.sigma_created_at || '';
+  }
+
   rows.sort((a, b) => {
     const pr = rankRow(a) - rankRow(b);
     if (pr !== 0) return pr;
-    const ca = a.sigma_created_at || '';
-    const cb = b.sigma_created_at || '';
+    const ca = effectiveCreatedAt(a);
+    const cb = effectiveCreatedAt(b);
     if (ca !== cb) return ca < cb ? -1 : 1;
+    // בתוך אותו "מקום" (כולל בין שתי הזמנות מקושרות) — ההזמנה בפועל הישנה יותר קודמת
+    const ownCa = a.sigma_created_at || '';
+    const ownCb = b.sigma_created_at || '';
+    if (ownCa !== ownCb) return ownCa < ownCb ? -1 : 1;
     const da = a.order_date || '';
     const db_ = b.order_date || '';
     if (da !== db_) return da < db_ ? -1 : 1;

@@ -77,12 +77,31 @@ export default function History({ onOpenOrder }) {
           <div className="row2">
             <span className={`badge status-${o.status}`}>{statusLabel(o.status)}</span>
             {o.issues.length > 0 && <span className="badge status-on_hold">{o.issues.length} בעיות בדרך</span>}
+            {o.shortages && o.shortages.length > 0 && <span className="badge status-on_hold">⚠️ {o.shortages.length} פריטים חסרים</span>}
           </div>
           <div className="meta">
             ליקוט: {fmt(o.pick_started_at)} ← {fmt(o.pick_finished_at)}
             {o.pick_started_at && o.pick_finished_at && <span> ({durationText(o.pick_started_at, o.pick_finished_at)})</span>}
             {o.picked_by && <span> · מלקט: {o.picked_by}</span>}
           </div>
+          {o.shortages && o.shortages.length > 0 && (
+            <div className="shortage-table-wrap">
+              <table className="agent-table">
+                <thead><tr><th>מק"ט</th><th>שם</th><th>הוזמן</th><th>נלקט</th><th>הערה</th></tr></thead>
+                <tbody>
+                  {o.shortages.map((s, idx) => (
+                    <tr key={idx}>
+                      <td>{s.item_code}</td>
+                      <td>{s.item_name}</td>
+                      <td>{s.qty_ordered}</td>
+                      <td>{s.qty_picked}</td>
+                      <td>{s.pick_note || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
           {o.issues.length > 0 && (
             <div className="meta" style={{ color: '#c0392b', marginTop: 4 }}>
               {o.issues.map((iss, idx) => (

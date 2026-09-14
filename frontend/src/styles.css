@@ -99,6 +99,7 @@ body {
 .badge.status-open { background: #eee; color: #444; }
 .badge.status-waiting_pick { background: #e9eefc; color: var(--blue); }
 .badge.status-picking { background: #fff4d6; color: #8a6400; }
+.badge.status-ready_for_check { background: #e9eefc; color: var(--blue-dark); }
 .badge.status-ready_to_pack { background: #e6f4ea; color: var(--green); }
 .badge.status-waiting_pickup { background: #ffe9d6; color: var(--orange); }
 .badge.status-delivered_to_ups { background: #e6f4ea; color: var(--green); }
@@ -154,6 +155,37 @@ body {
 }
 .item-row .name { font-weight: 500; }
 .item-row .sub { color: var(--muted); font-size: 12px; }
+
+/* ---------- ליקוט לפי מיקום + בדיקה (QC) — ר' PICKING_QC_SPEC.md ---------- */
+.pick-progress { margin-bottom: 12px; }
+.pick-progress-bar { background: #e5e7eb; border-radius: 999px; height: 8px; overflow: hidden; }
+.pick-progress-fill { background: var(--teal); height: 100%; transition: width .2s ease; }
+.pick-progress-label { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+.pick-item-card {
+  background: #fff; border: 1px solid var(--border); border-radius: 12px;
+  padding: 12px; margin-bottom: 10px;
+}
+.pick-item-card.done { border-color: var(--green); background: #f6fbf8; }
+.pick-item-card.missing { border-color: var(--red); background: #fdf5f4; }
+.pick-item-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pick-location-badge {
+  background: var(--teal); color: #fff; font-weight: bold; font-size: 15px;
+  padding: 4px 10px; border-radius: 8px; flex-shrink: 0;
+}
+.pick-item-name { font-weight: 600; font-size: 15px; }
+.pick-status-line { margin-top: 6px; font-weight: 600; }
+.pick-status-line.picked { color: var(--green); }
+.pick-status-line.partial { color: var(--orange); }
+.pick-status-line.missing { color: var(--red); }
+.pick-edit-row { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+.pick-edit-row input {
+  padding: 10px; border-radius: 8px; border: 1px solid var(--border); font-size: 14px;
+}
+.pick-item-card .btn-row { margin-top: 8px; }
+.pick-item-card .action-btn { margin-top: 8px; padding: 10px; font-size: 14px; }
+
+.shortage-table-wrap { margin-top: 8px; overflow-x: auto; }
 
 .action-btn {
   display: block; width: 100%; padding: 16px; font-size: 17px; font-weight: bold;

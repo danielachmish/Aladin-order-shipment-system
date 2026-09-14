@@ -29,9 +29,18 @@ function ingestOrders(orders) {
       sigma_created_at = excluded.sigma_created_at,
       synced_at = datetime('now')
   `);
+  // תיקון קריטי (14.9.2026): "INSERT OR REPLACE" היה מוחק בכל סבב סנכרון (כל
+  // 45 שניות) את כל התקדמות הליקוט/בדיקה של השורה (qty_picked, pick_status,
+  // checked, check_note) — כי סיגמא לא יודעת שההזמנה בליקוט אצלנו, וממשיכה
+  // להופיע ב"פתוחות" עד שהיא נסגרת בפועל. עכשיו מעדכנים רק את השדות שמגיעים
+  // מסיגמא, ולא נוגעים בשדות הליקוט/בדיקה הפנימיים שלנו.
   const insertItem = db.prepare(`
-    INSERT OR REPLACE INTO order_items_cache (order_key, line_no, item_code, item_name, quantity, price, location, note)
+    INSERT INTO order_items_cache (order_key, line_no, item_code, item_name, quantity, price, location, note)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(order_key, line_no) DO UPDATE SET
+      item_code = excluded.item_code, item_name = excluded.item_name,
+      quantity = excluded.quantity, price = excluded.price,
+      location = excluded.location
   `);
   // "הזמנה חדשה נכנסת מיד לתור" (סעיף 6.1.4) — רק אם עוד אין לה מצב עבודה
   const insertWorkflowIfNew = db.prepare(`

@@ -3,6 +3,7 @@ import React from 'react';
 const STEPS_UPS = [
   { key: 'waiting_pick', label: 'בתור' },
   { key: 'picking', label: 'ליקוט' },
+  { key: 'ready_for_check', label: 'בדיקה' },
   { key: 'ready_to_pack', label: 'אריזה' },
   { key: 'waiting_pickup', label: 'ממתין לאיסוף' },
   { key: 'delivered_to_ups', label: 'נמסר ל-UPS' },
@@ -14,6 +15,7 @@ const STEPS_UPS = [
 const STEPS_SELF_PICKUP = [
   { key: 'waiting_pick', label: 'בתור' },
   { key: 'picking', label: 'ליקוט' },
+  { key: 'ready_for_check', label: 'בדיקה' },
   { key: 'ready_to_pack', label: 'אריזה' },
   { key: 'waiting_pickup', label: 'ממתין לאיסוף' },
   { key: 'closed', label: 'נאסף' },

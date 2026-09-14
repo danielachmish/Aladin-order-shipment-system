@@ -3,6 +3,8 @@ import { api } from '../api.js';
 import { statusLabel, priorityLabel, shipLabel } from '../labels.js';
 import { onLive } from '../ws.js';
 import OrderTimeline from '../components/OrderTimeline.jsx';
+import PickChecklist from '../components/PickChecklist.jsx';
+import { shareShortageSummary } from '../shareShortage.js';
 
 const ISSUE_REASONS = ['חוסר במלאי', 'פריט לא נמצא', 'כמות לא תואמת', 'הזמנה מעוכבת', 'אחר'];
 
@@ -18,6 +20,8 @@ export default function OrderDetail({ user, orderKey, onBack }) {
   const [additionNote, setAdditionNote] = useState('');
   const [showCancel, setShowCancel] = useState(false);
   const [cancelNote, setCancelNote] = useState('');
+  const [showLink, setShowLink] = useState(false);
+  const [linkOrderNum, setLinkOrderNum] = useState('');
 
   async function load() {
     try {
@@ -61,7 +65,7 @@ export default function OrderDetail({ user, orderKey, onBack }) {
   );
   if (!data) return <div className="empty-state">טוען...</div>;
 
-  const { order, items, events, shipments, urgent_requests: urgentReqs, queue_position: queuePos } = data;
+  const { order, items, events, shipments, urgent_requests: urgentReqs, queue_position: queuePos, linked_orders: linkedOrders } = data;
   const version = order.version;
   const isWarehouse = user.role === 'warehouse' || user.role === 'warehouse_manager';
   const isManager = user.role === 'warehouse_manager' || user.role === 'system_admin';
@@ -74,6 +78,15 @@ export default function OrderDetail({ user, orderKey, onBack }) {
     (order.agent_name && order.agent_name.trim() === (user.name || '').trim())
   );
   const pendingUrgent = urgentReqs.find((r) => r.status === 'pending');
+
+  // ליקוט לפי מיקום + בדיקה (QC) — ר' PICKING_QC_SPEC.md
+  const isPicking = order.status === 'picking';
+  const isChecking = order.status === 'ready_for_check';
+  const pickDoneCount = items.filter((it) => it.pick_status).length;
+  const checkDoneCount = items.filter((it) => it.pick_status === 'missing' || it.checked).length;
+  const allPicked = items.length > 0 && pickDoneCount === items.length;
+  const allChecked = items.length > 0 && checkDoneCount === items.length;
+  const shortageItems = items.filter((it) => it.pick_status === 'partial' || it.pick_status === 'missing');
 
   return (
     <div>
@@ -104,6 +117,11 @@ export default function OrderDetail({ user, orderKey, onBack }) {
         {order.pending_addition_note && (
           <div className="live-pill off" style={{ marginTop: 8 }}>⏳ ממתינה תוספת: {order.pending_addition_note}</div>
         )}
+        {linkedOrders.length > 0 && (
+          <div className="live-pill on" style={{ marginTop: 8 }}>
+            🔗 מקושרת ל{linkedOrders.map((lo) => `הזמנה ${lo.order_num} (${statusLabel(lo.status)})`).join(', ')}
+          </div>
+        )}
       </div>
 
       {/* ---- באנר: דחיפות + תוספת (סוכן ומנהל) ---- */}
@@ -133,27 +151,89 @@ export default function OrderDetail({ user, orderKey, onBack }) {
         </div>
       )}
 
+      {/* קישור הזמנות — זמין למחסן/סוכן/מנהל, לא רק סוכן/מנהל (בקשת דניאל 14.9.2026) */}
+      {(isWarehouse || isOwnAgent || isManager) && !['closed', 'cancelled'].includes(order.status) && (
+        <div className="btn-row" style={{ marginBottom: 4 }}>
+          {linkedOrders.length > 0 ? (
+            <button className="action-btn secondary" disabled={busy} onClick={() => act(() => api.unlinkOrder(orderKey))}>בטל קישור</button>
+          ) : (
+            <button className="action-btn secondary" disabled={busy} onClick={() => setShowLink(true)}>🔗 קשר להזמנה אחרת</button>
+          )}
+        </div>
+      )}
+
       {!['cancelled'].includes(order.status) && (
         <OrderTimeline status={order.status} preWaitStatus={order.pre_wait_status} deliveryMethod={order.delivery_method} />
       )}
 
       <div className="section-title">פריטים</div>
-      {items.map((it) => (
-        <div className="item-row" key={it.line_no}>
-          <div>
-            <div className="name">{it.item_name}</div>
-            <div className="sub">{it.item_code} {it.location ? `· מיקום ${it.location}` : ''}</div>
+
+      {isWarehouse && (isPicking || isChecking) ? (
+        <>
+          <div className="pick-progress">
+            <div className="pick-progress-bar">
+              <div
+                className="pick-progress-fill"
+                style={{ width: `${items.length ? Math.round((isPicking ? pickDoneCount : checkDoneCount) / items.length * 100) : 0}%` }}
+              />
+            </div>
+            <div className="pick-progress-label">
+              {isPicking ? pickDoneCount : checkDoneCount} מתוך {items.length} שורות הושלמו
+            </div>
           </div>
-          <div>{it.quantity} × ₪{it.price}</div>
-        </div>
-      ))}
+          <PickChecklist
+            mode={isPicking ? 'pick' : 'check'}
+            order={order}
+            items={items}
+            onChanged={load}
+            busy={busy}
+            setBusy={setBusy}
+            setError={setError}
+          />
+        </>
+      ) : (
+        items.map((it) => (
+          <div className="item-row" key={it.line_no}>
+            <div>
+              <div className="name">{it.item_name}</div>
+              <div className="sub">{it.item_code} {it.location ? `· מיקום ${it.location}` : ''}</div>
+            </div>
+            <div>{it.quantity} × ₪{it.price}</div>
+          </div>
+        ))
+      )}
 
       {/* ---- פעולות מחסן ---- */}
       {isWarehouse && order.status === 'waiting_pick' && (
         <button className="action-btn" disabled={busy} onClick={() => act(() => api.claim(orderKey, version))}>התחלת ליקוט</button>
       )}
-      {isWarehouse && order.status === 'picking' && (
-        <button className="action-btn" disabled={busy} onClick={() => act(() => api.finishPicking(orderKey, version))}>סיום ליקוט</button>
+      {isWarehouse && isPicking && (
+        <div className="btn-row">
+          <button
+            className="action-btn" disabled={busy || !allPicked}
+            title={!allPicked ? 'יש עוד שורות שלא סומנו' : undefined}
+            onClick={() => act(() => api.finishPicking(orderKey, version))}
+          >
+            סיום ליקוט{!allPicked ? ` (${pickDoneCount}/${items.length})` : ''}
+          </button>
+          {allPicked && shortageItems.length > 0 && (
+            <button
+              className="action-btn warn"
+              onClick={() => shareShortageSummary(order, shortageItems).catch((e) => setError(e.message))}
+            >
+              📤 שתף ללקוח ({shortageItems.length})
+            </button>
+          )}
+        </div>
+      )}
+      {isWarehouse && isChecking && (
+        <button
+          className="action-btn" disabled={busy || !allChecked}
+          title={!allChecked ? 'יש עוד שורות שלא אושרו בבדיקה' : undefined}
+          onClick={() => act(() => api.finishCheck(orderKey, version))}
+        >
+          אישרתי בדיקה — מוכן לאריזה{!allChecked ? ` (${checkDoneCount}/${items.length})` : ''}
+        </button>
       )}
       {isWarehouse && order.status === 'ready_to_pack' && (
         <button className="action-btn" disabled={busy} onClick={() => act(() => api.packDone(orderKey, version))}>סיום אריזה</button>
@@ -182,7 +262,7 @@ export default function OrderDetail({ user, orderKey, onBack }) {
         </button>
       )}
 
-      {isWarehouse && ['waiting_pick', 'picking', 'ready_to_pack', 'waiting_pickup'].includes(order.status) && (
+      {isWarehouse && ['waiting_pick', 'picking', 'ready_for_check', 'ready_to_pack', 'waiting_pickup'].includes(order.status) && (
         <div className="btn-row">
           <button className="action-btn warn" disabled={busy} onClick={() => setShowIssue(true)}>דיווח בעיה</button>
           <button className="action-btn secondary" disabled={busy} onClick={() => act(() => api.requestWait(orderKey))}>ממתין לתשובת לקוח/סוכן</button>
@@ -305,6 +385,33 @@ export default function OrderDetail({ user, orderKey, onBack }) {
               אישור ביטול
             </button>
             <button className="action-btn secondary" onClick={() => setShowCancel(false)}>סגירה</button>
+          </div>
+        </div>
+      )}
+
+      {showLink && (
+        <div className="modal-backdrop" onClick={() => setShowLink(false)}>
+          <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+            <h3>קשר להזמנה אחרת</h3>
+            <div className="meta" style={{ marginBottom: 8 }}>
+              למשל הזמנת תוספת שהגיעה כהזמנה נפרדת מסיגמא — היא תעלה לאותו מקום בתור.
+            </div>
+            <input
+              type="text" placeholder="מספר ההזמנה השנייה" value={linkOrderNum}
+              onChange={(e) => setLinkOrderNum(e.target.value)}
+            />
+            <button
+              className="action-btn"
+              disabled={busy || !linkOrderNum.trim()}
+              onClick={() => act(async () => {
+                await api.linkOrder(orderKey, linkOrderNum.trim());
+                setShowLink(false);
+                setLinkOrderNum('');
+              })}
+            >
+              קישור
+            </button>
+            <button className="action-btn secondary" onClick={() => setShowLink(false)}>ביטול</button>
           </div>
         </div>
       )}

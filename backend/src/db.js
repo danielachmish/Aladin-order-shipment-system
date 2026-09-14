@@ -24,5 +24,11 @@ ensureColumn('orders_cache', 'sigma_agent_name', 'TEXT');
 ensureColumn('orders_cache', 'sigma_created_at', 'TEXT');
 ensureColumn('workflow_state', 'pending_addition_note', 'TEXT');
 ensureColumn('workflow_state', 'delivery_method', 'TEXT');
+ensureColumn('order_items_cache', 'qty_picked', 'REAL');
+ensureColumn('order_items_cache', 'pick_status', 'TEXT');
+ensureColumn('order_items_cache', 'pick_note', 'TEXT');
+ensureColumn('order_items_cache', 'checked', "INTEGER NOT NULL DEFAULT 0");
+ensureColumn('order_items_cache', 'check_note', 'TEXT');
+ensureColumn('workflow_state', 'linked_group_id', 'TEXT');
 
 module.exports = { db, isNew };

@@ -6,6 +6,7 @@ import { onLive } from '../ws.js';
 const METRICS = [
   { key: 'waiting_pick', label: 'ממתינות לליקוט' },
   { key: 'picking', label: 'בליקוט' },
+  { key: 'ready_for_check', label: 'בבדיקה' },
   { key: 'shipping', label: 'מוכנות למשלוח', statuses: ['ready_to_pack', 'waiting_pickup', 'delivered_to_ups'] },
   { key: 'exceptions', label: 'חריגות', statuses: ['on_hold', 'waiting_answer'] },
 ];
@@ -50,10 +51,11 @@ export default function OrdersList({ user, onOpenOrder }) {
   }, []);
 
   const counts = useMemo(() => {
-    const c = { waiting_pick: 0, picking: 0, shipping: 0, exceptions: 0 };
+    const c = { waiting_pick: 0, picking: 0, ready_for_check: 0, shipping: 0, exceptions: 0 };
     for (const o of orders) {
       if (o.status === 'waiting_pick') c.waiting_pick++;
       else if (o.status === 'picking') c.picking++;
+      else if (o.status === 'ready_for_check') c.ready_for_check++;
       else if (['ready_to_pack', 'waiting_pickup', 'delivered_to_ups'].includes(o.status)) c.shipping++;
       else if (['on_hold', 'waiting_answer'].includes(o.status)) c.exceptions++;
     }

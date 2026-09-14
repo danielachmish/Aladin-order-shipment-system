@@ -212,7 +212,8 @@ router.post('/settings/agent-view-scope', requireRole('warehouse_manager', 'syst
 function baseOrderRow(order_key) {
   return db.prepare(`
     SELECT oc.*, ws.status, ws.priority, ws.agent_id, ws.claimed_by, ws.queue_entered_at,
-           ws.version, ws.hold_reason, ws.pre_wait_status, ws.pending_addition_note, ws.delivery_method, ws.updated_at AS wf_updated_at,
+           ws.version, ws.hold_reason, ws.pre_wait_status, ws.pending_addition_note, ws.delivery_method,
+           ws.linked_group_id, ws.updated_at AS wf_updated_at,
            COALESCE(u.display_name, oc.sigma_agent_name) AS agent_name, cu.display_name AS claimed_by_name
     FROM orders_cache oc
     JOIN workflow_state ws ON ws.order_key = oc.order_key
@@ -255,7 +256,8 @@ router.get('/orders', (req, res) => {
 
   let sql = `
     SELECT oc.order_key, oc.order_num, oc.customer_name, oc.total_amount, oc.line_count, oc.notes,
-           ws.status, ws.priority, ws.agent_id, ws.claimed_by, ws.queue_entered_at, ws.version, ws.pending_addition_note,
+           ws.status, ws.priority, ws.agent_id, ws.claimed_by, ws.queue_entered_at, ws.version,
+           ws.pending_addition_note, ws.linked_group_id,
            COALESCE(u.display_name, oc.sigma_agent_name) AS agent_name, cu.display_name AS claimed_by_name
     FROM orders_cache oc
     JOIN workflow_state ws ON ws.order_key = oc.order_key
@@ -316,7 +318,39 @@ router.get('/orders/:key', (req, res) => {
   const urgentReqs = urgent.listForOrder(key);
   const queuePos = order.status === 'waiting_pick' ? positionInQueue(key, 'waiting_pick') : null;
 
-  res.json({ order, items, events, shipments, urgent_requests: urgentReqs, queue_position: queuePos });
+  // הזמנות מקושרות (ר' workflow.js linkOrders) — שאר ההזמנות באותה קבוצה
+  const linkedOrders = order.linked_group_id
+    ? db.prepare(`
+        SELECT oc.order_key, oc.order_num, oc.customer_name, ws.status
+        FROM workflow_state ws JOIN orders_cache oc ON oc.order_key = ws.order_key
+        WHERE ws.linked_group_id = ? AND ws.order_key != ?
+      `).all(order.linked_group_id, key)
+    : [];
+
+  res.json({ order, items, events, shipments, urgent_requests: urgentReqs, queue_position: queuePos, linked_orders: linkedOrders });
+});
+
+// הזמנות מקושרות ידנית — ר' workflow.js linkOrders (בקשת דניאל 14.9.2026)
+router.post('/orders/:key/link', requireRole('agent', 'warehouse', 'warehouse_manager', 'system_admin'), (req, res) => {
+  try {
+    const key = decodeURIComponent(req.params.key);
+    const { otherOrderNum } = req.body || {};
+    if (!otherOrderNum) return res.status(400).json({ error: 'יש להזין מספר הזמנה לקישור' });
+    const result = wf.linkOrders(key, String(otherOrderNum).trim(), req.user.id);
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message });
+  }
+});
+
+router.post('/orders/:key/unlink', requireRole('agent', 'warehouse', 'warehouse_manager', 'system_admin'), (req, res) => {
+  try {
+    const key = decodeURIComponent(req.params.key);
+    const state = wf.unlinkOrder(key, req.user.id);
+    res.json({ ok: true, state });
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message });
+  }
 });
 
 function handleWorkflowAction(fn) {
@@ -336,6 +370,34 @@ router.post('/orders/:key/claim', requireRole('warehouse', 'warehouse_manager'),
 
 router.post('/orders/:key/finish-picking', requireRole('warehouse', 'warehouse_manager'),
   handleWorkflowAction((key, req) => wf.finishPicking(key, req.user.id, req.body?.expectedVersion)));
+
+// ליקוט לפי מיקום + בדיקה (QC) — ר' PICKING_QC_SPEC.md (סוכם עם דניאל 14.9.2026)
+router.post('/orders/:key/items/:lineNo/pick', requireRole('warehouse', 'warehouse_manager'), (req, res) => {
+  try {
+    const key = decodeURIComponent(req.params.key);
+    const lineNo = Number(req.params.lineNo);
+    const { qtyPicked, pickStatus, pickNote } = req.body || {};
+    const item = wf.updateItemPick(key, lineNo, req.user.id, { qtyPicked, pickStatus, pickNote });
+    res.json({ ok: true, item });
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message });
+  }
+});
+
+router.post('/orders/:key/items/:lineNo/check', requireRole('warehouse', 'warehouse_manager'), (req, res) => {
+  try {
+    const key = decodeURIComponent(req.params.key);
+    const lineNo = Number(req.params.lineNo);
+    const { checked, checkNote } = req.body || {};
+    const item = wf.updateItemCheck(key, lineNo, req.user.id, { checked, checkNote });
+    res.json({ ok: true, item });
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message });
+  }
+});
+
+router.post('/orders/:key/finish-check', requireRole('warehouse', 'warehouse_manager'),
+  handleWorkflowAction((key, req) => wf.finishCheck(key, req.user.id, req.body?.expectedVersion)));
 
 router.post('/orders/:key/pack-done', requireRole('warehouse', 'warehouse_manager'),
   handleWorkflowAction((key, req) => wf.packDone(key, req.user.id, req.body?.expectedVersion)));
@@ -473,7 +535,7 @@ router.get('/history', requireRole('warehouse', 'warehouse_manager', 'system_adm
            ws.status, ws.priority, ws.updated_at
     FROM orders_cache oc
     JOIN workflow_state ws ON ws.order_key = oc.order_key
-    WHERE ws.status IN ('ready_to_pack','waiting_pickup','delivered_to_ups','closed')
+    WHERE ws.status IN ('ready_for_check','ready_to_pack','waiting_pickup','delivered_to_ups','closed')
       AND ws.updated_at >= datetime('now', ?)
   `;
   const params = [`-${sinceDays} days`];
@@ -500,17 +562,26 @@ router.get('/history', requireRole('warehouse', 'warehouse_manager', 'system_adm
     ORDER BY we.created_at ASC
   `);
   const userStmt = db.prepare(`SELECT display_name FROM users WHERE user_id = ?`);
+  // דוח חוסרים למזכירה — ר' PICKING_QC_SPEC.md סעיף 5.3 (סוכם עם דניאל 14.9.2026)
+  const shortagesStmt = db.prepare(`
+    SELECT item_code, item_name, quantity AS qty_ordered, qty_picked, pick_status, pick_note
+    FROM order_items_cache
+    WHERE order_key = ? AND pick_status IN ('missing', 'partial')
+    ORDER BY line_no
+  `);
 
   const result = orders.map((o) => {
     const start = pickStartStmt.get(o.order_key);
     const end = pickEndStmt.get(o.order_key);
     const issues = issuesStmt.all(o.order_key);
+    const shortages = shortagesStmt.all(o.order_key);
     return {
       ...o,
       pick_started_at: start ? start.created_at : null,
       picked_by: start && start.user_id ? (userStmt.get(start.user_id) || {}).display_name : null,
       pick_finished_at: end ? end.created_at : null,
       issues,
+      shortages,
     };
   });
 

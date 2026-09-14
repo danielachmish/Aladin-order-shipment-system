@@ -51,6 +51,9 @@ export const api = {
 
   claim: (key, expectedVersion) => request(`/orders/${encodeURIComponent(key)}/claim`, { method: 'POST', body: JSON.stringify({ expectedVersion }) }),
   finishPicking: (key, expectedVersion) => request(`/orders/${encodeURIComponent(key)}/finish-picking`, { method: 'POST', body: JSON.stringify({ expectedVersion }) }),
+  pickItem: (key, lineNo, data) => request(`/orders/${encodeURIComponent(key)}/items/${lineNo}/pick`, { method: 'POST', body: JSON.stringify(data) }),
+  checkItem: (key, lineNo, data) => request(`/orders/${encodeURIComponent(key)}/items/${lineNo}/check`, { method: 'POST', body: JSON.stringify(data) }),
+  finishCheck: (key, expectedVersion) => request(`/orders/${encodeURIComponent(key)}/finish-check`, { method: 'POST', body: JSON.stringify({ expectedVersion }) }),
   packDone: (key, expectedVersion) => request(`/orders/${encodeURIComponent(key)}/pack-done`, { method: 'POST', body: JSON.stringify({ expectedVersion }) }),
   deliverUps: (key, expectedVersion) => request(`/orders/${encodeURIComponent(key)}/deliver-ups`, { method: 'POST', body: JSON.stringify({ expectedVersion }) }),
   selfPickup: (key, expectedVersion) => request(`/orders/${encodeURIComponent(key)}/self-pickup`, { method: 'POST', body: JSON.stringify({ expectedVersion }) }),
@@ -63,6 +66,8 @@ export const api = {
   setPriority: (key, priority) => request(`/orders/${encodeURIComponent(key)}/priority`, { method: 'POST', body: JSON.stringify({ priority }) }),
   requestAddition: (key, note) => request(`/orders/${encodeURIComponent(key)}/request-addition`, { method: 'POST', body: JSON.stringify({ note }) }),
   additionReceived: (key) => request(`/orders/${encodeURIComponent(key)}/addition-received`, { method: 'POST', body: JSON.stringify({}) }),
+  linkOrder: (key, otherOrderNum) => request(`/orders/${encodeURIComponent(key)}/link`, { method: 'POST', body: JSON.stringify({ otherOrderNum }) }),
+  unlinkOrder: (key) => request(`/orders/${encodeURIComponent(key)}/unlink`, { method: 'POST', body: JSON.stringify({}) }),
 
   requestUrgent: (key) => request(`/orders/${encodeURIComponent(key)}/urgent-request`, { method: 'POST', body: JSON.stringify({}) }),
   pendingUrgent: () => request('/urgent-requests/pending'),

@@ -2,7 +2,7 @@
 // (10.9.2026): לא רק ספירות, אלא "מה דורש החלטה עכשיו" + מדדי זמן/כסף.
 const { db } = require('./db');
 
-const ACTIVE_STATUSES = ['open', 'waiting_pick', 'picking', 'ready_to_pack', 'waiting_pickup', 'delivered_to_ups'];
+const ACTIVE_STATUSES = ['open', 'waiting_pick', 'picking', 'ready_for_check', 'ready_to_pack', 'waiting_pickup', 'delivered_to_ups'];
 const STUCK_PICKING_MINUTES = 120; // "תקועה" = בליקוט מעל שעתיים
 
 function computeDashboard() {
@@ -21,15 +21,15 @@ function computeDashboard() {
     WHERE to_status IN ('closed','delivered_to_ups') AND date(created_at) = date('now', '-1 day')
   `).get().c;
 
-  // זמן ליקוט ממוצע (picking -> ready_to_pack) ב-7 הימים האחרונים
+  // זמן ליקוט ממוצע (picking -> ready_for_check, שלב הליקוט בלבד, לפני בדיקה) ב-7 הימים האחרונים
   const avgPick = db.prepare(`
     SELECT AVG((julianday(e2.created_at) - julianday(e1.created_at)) * 24 * 60) AS avg_minutes
     FROM workflow_events e1
     JOIN workflow_events e2 ON e2.order_key = e1.order_key
-      AND e2.to_status = 'ready_to_pack' AND e2.created_at > e1.created_at
+      AND e2.to_status = 'ready_for_check' AND e2.created_at > e1.created_at
       AND e2.created_at = (
         SELECT MIN(e3.created_at) FROM workflow_events e3
-        WHERE e3.order_key = e1.order_key AND e3.to_status = 'ready_to_pack' AND e3.created_at > e1.created_at
+        WHERE e3.order_key = e1.order_key AND e3.to_status = 'ready_for_check' AND e3.created_at > e1.created_at
       )
     WHERE e1.to_status = 'picking' AND e1.created_at >= datetime('now', '-7 days')
   `).get();
