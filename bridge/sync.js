@@ -133,7 +133,12 @@ async function fetchOpenOrders() {
         -- ר' PICKING_QC_SPEC.md סעיף 11. נופל בחזרה ל-azmanot.FBarCode אם אין
         -- ברקוד בקטלוג. stock_place בקטלוג נמצא ריק אצל רוב הפריטים שנבדקו —
         -- ייתכן שהמיקום הפיזי בפועל לא מנוהל בשדה הזה אצל דניאל (בבירור).
-        SELECT a.pline AS [lineNo], a.prit_ID AS [itemCode], a.pname AS [itemName], a.quant AS [quantity], a.pprice AS [price],
+        --
+        -- itemCode: תוקן 14.9.2026 (דיווח דניאל) — קודם הוצג a.prit_ID, שהוא
+        -- מזהה פנימי מספרי חסר משמעות ("19460" וכו'), לא מק"ט אמיתי. עכשיו
+        -- מציגים את pritim.prit_code (המק"ט הקריא, למשל "1090010211"), עם
+        -- נפילה חזרה למזהה הפנימי רק אם מסיבה כלשהי הפריט לא נמצא בקטלוג.
+        SELECT a.pline AS [lineNo], COALESCE(pr.prit_code, CAST(a.prit_ID AS varchar(50))) AS [itemCode], a.pname AS [itemName], a.quant AS [quantity], a.pprice AS [price],
                NULLIF(LTRIM(RTRIM(pr.stock_place)), '') AS [location],
                COALESCE(NULLIF(LTRIM(RTRIM(pr.barCode)), ''), NULLIF(LTRIM(RTRIM(a.FBarCode)), '')) AS [barcode]
         FROM azmanot a
