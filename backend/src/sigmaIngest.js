@@ -6,6 +6,7 @@
 const crypto = require('crypto');
 const { db } = require('./db');
 const { emitChange } = require('./bus');
+const { ACTIVE_STATUSES } = require('./workflow');
 
 function uid(prefix) {
   return `${prefix}_${crypto.randomBytes(8).toString('hex')}`;
@@ -61,12 +62,30 @@ function ingestOrders(orders) {
         sigma_agent_name: o.agentName || null,
         sigma_created_at: o.createdAt || null,
       });
+      const currentLineNos = new Set();
       (o.items || []).forEach((it, idx) => {
-        insertItem.run(key, it.lineNo ?? idx + 1, it.itemCode, it.itemName, it.quantity, it.price, it.location || null, it.barcode || null, null);
+        const lineNo = it.lineNo ?? idx + 1;
+        currentLineNos.add(String(lineNo));
+        insertItem.run(key, lineNo, it.itemCode, it.itemName, it.quantity, it.price, it.location || null, it.barcode || null, null);
       });
+      // תיקון 14.9.2026 (דיווח דניאל, הזמנה 192821 "עדשה מקומית"): שורות
+      // ששורשרו לחשבונית בסיגמא בין סבב לסבב פשוט מפסיקות להישלח — עד עכשיו
+      // לא היה שום מנגנון שמוחק אותן מה-cache שלנו, אז הן נשארו תקועות
+      // למלקט לנצח למרות שכבר סגרו אותן. מוחקים כל שורה קיימת שלא הופיעה
+      // בסבב הנוכחי (גם אם כבר לוקטה/נבדקה — היא כבר לא חלק מההזמנה בסיגמא).
+      const existingLines = db.prepare('SELECT line_no FROM order_items_cache WHERE order_key = ?').all(key);
+      const deleteLine = db.prepare('DELETE FROM order_items_cache WHERE order_key = ? AND line_no = ?');
+      let removedLines = 0;
+      for (const row of existingLines) {
+        if (!currentLineNos.has(String(row.line_no))) {
+          deleteLine.run(key, row.line_no);
+          removedLines++;
+        }
+      }
       const wf = insertWorkflowIfNew.run(key);
       existed ? updated++ : created++;
       if (wf.changes > 0) emitChange('order', { order_key: key, status: 'waiting_pick', version: 1 });
+      else if (removedLines > 0) emitChange('order', { order_key: key });
     }
   });
   tx(orders);
@@ -79,34 +98,57 @@ function ingestOrders(orders) {
 
 // ניקוי: הזמנות ש"ממתינות לליקוט" (עוד לא התחילו) אבל כבר לא מופיעות ברשימה
 // הפתוחה שנשלחה מ-Sigma (למשל שורשרו במלואה לחשבונית, בוטלו, או חזרו למזכירה) —
-// נסגרות אוטומטית. לא נוגעים בהזמנה שכבר בליקוט/אריזה/משלוח — מישהו כבר עובד עליה.
+// נסגרות אוטומטית (עוד לא התחיל בהן עבודה, אין מה "לאבד").
+//
+// תיקון 14.9.2026 (דיווח דניאל, הזמנה 192821 "עדשה מקומית"): הזמנה שכבר
+// **בעבודה** (ליקוט/בדיקה/אריזה/משלוח) ופתאום שורשרה במלואה לחשבונית לא
+// הייתה מטופלת בכלל — לא נסגרה (בכוונה, כדי לא "לגנוב" עבודה שמישהו כבר
+// באמצעה) אבל גם לא זזה משם, כך שהיא נשארה תקועה בתור הליקוט הפעיל בלי
+// אף פריט (אחרי שהניקוי ברמת השורה הבודדת ב-ingestOrders מחק את כל
+// השורות). דניאל ביקש: להעביר הזמנות כאלה לפאנל "הזמנות מעוכבות" הקיים
+// (חריגות → on_hold) עד שמנהל יסגור אותן ידנית — לא לסגור אוטומטית,
+// ולא להשאיר אותן "בליקוט" בלי כלום ללקט.
 function reconcileOpenOrders(companyId, sidra, validOrderNums) {
   const prefix = `${companyId}|${sidra}|`;
   const rows = db.prepare(`
-    SELECT order_key FROM workflow_state
-    WHERE status = 'waiting_pick' AND order_key LIKE ?
-  `).all(`${prefix}%`);
+    SELECT order_key, status FROM workflow_state
+    WHERE order_key LIKE ? AND status IN (${ACTIVE_STATUSES.map(() => '?').join(',')})
+  `).all(`${prefix}%`, ...ACTIVE_STATUSES);
 
   const validSet = new Set(validOrderNums.map(String));
-  let closedCount = 0;
+  let closedCount = 0, onHoldCount = 0;
   const tx = db.transaction(() => {
     for (const r of rows) {
       const num = r.order_key.split('|')[2];
       if (validSet.has(num)) continue;
-      db.prepare(`
-        UPDATE workflow_state SET status = 'closed', version = version + 1, updated_at = datetime('now')
-        WHERE order_key = ?
-      `).run(r.order_key);
-      db.prepare(`
-        INSERT INTO workflow_events (event_id, order_key, user_id, from_status, to_status, note)
-        VALUES (?, ?, NULL, 'waiting_pick', 'closed', 'הוסרה מסנכרון Sigma — כבר לא בקריטריון ההזמנות הפתוחות')
-      `).run(uid('evt'), r.order_key);
-      emitChange('order', { order_key: r.order_key, status: 'closed' });
-      closedCount++;
+      if (r.status === 'waiting_pick') {
+        db.prepare(`
+          UPDATE workflow_state SET status = 'closed', version = version + 1, updated_at = datetime('now')
+          WHERE order_key = ?
+        `).run(r.order_key);
+        db.prepare(`
+          INSERT INTO workflow_events (event_id, order_key, user_id, from_status, to_status, note)
+          VALUES (?, ?, NULL, 'waiting_pick', 'closed', 'הוסרה מסנכרון Sigma — כבר לא בקריטריון ההזמנות הפתוחות')
+        `).run(uid('evt'), r.order_key);
+        emitChange('order', { order_key: r.order_key, status: 'closed' });
+        closedCount++;
+      } else {
+        db.prepare(`
+          UPDATE workflow_state
+          SET status = 'on_hold', hold_reason = ?, pre_wait_status = ?, version = version + 1, updated_at = datetime('now')
+          WHERE order_key = ?
+        `).run('ההזמנה כבר לא מופיעה כפתוחה בסיגמא (כנראה שורשרה במלואה לחשבונית) — נדרשת בדיקה וסגירה ידנית', r.status, r.order_key);
+        db.prepare(`
+          INSERT INTO workflow_events (event_id, order_key, user_id, from_status, to_status, note)
+          VALUES (?, ?, NULL, ?, 'on_hold', 'הועברה אוטומטית לעיכוב — הוסרה מסנכרון Sigma באמצע עבודה')
+        `).run(uid('evt'), r.order_key, r.status);
+        emitChange('order', { order_key: r.order_key, status: 'on_hold' });
+        onHoldCount++;
+      }
     }
   });
   tx();
-  return { checked: rows.length, closed: closedCount };
+  return { checked: rows.length, closed: closedCount, onHold: onHoldCount };
 }
 
 // תיקון-חירום: מחזיר ל"ממתינה לליקוט" הזמנות שנסגרו בטעות ע"י reconcile (למשל
