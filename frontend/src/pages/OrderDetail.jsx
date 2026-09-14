@@ -226,7 +226,7 @@ export default function OrderDetail({ user, orderKey, onBack }) {
           <div className="item-row" key={it.line_no}>
             <div>
               <div className="name">{it.item_name}</div>
-              <div className="sub">{it.item_code} {it.location ? `· מיקום ${it.location}` : ''}</div>
+              <div className="sub">{it.item_code} {it.location ? `· מיקום ${it.location}` : ''} {it.barcode ? `· ברקוד ${it.barcode}` : ''}</div>
             </div>
             <div>{it.quantity} × ₪{it.price}</div>
           </div>
