@@ -34,10 +34,6 @@ export default function Login({ onLoggedIn }) {
           {busy ? 'מתחבר...' : 'כניסה'}
         </button>
       </form>
-      <div className="role-hint">
-        משתמשי דמו: agent1/1234 (סוכנת) · agent2/1234 (סוכן)<br />
-        warehouse/1234 (מחסן) · manager/1234 (מנהלת מחסן) · admin/1234
-      </div>
     </div>
   );
 }
