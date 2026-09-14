@@ -22,6 +22,36 @@ export default function OrderDetail({ user, orderKey, onBack }) {
   const [cancelNote, setCancelNote] = useState('');
   const [showLink, setShowLink] = useState(false);
   const [linkOrderNum, setLinkOrderNum] = useState('');
+  const [linkResults, setLinkResults] = useState([]);
+  const [linkSearching, setLinkSearching] = useState(false);
+
+  // חיפוש הזמנה לקישור — גם לפי מספר וגם לפי שם לקוח (בקשת דניאל 14.9.2026:
+  // "לא תמיד זוכר את מספר ההזמנה"). מציג את ההזמנות התואמות, ממוינות מהחדשה
+  // לישנה, ולחיצה על תוצאה מקשרת ישירות בלי להקליד מספר.
+  useEffect(() => {
+    if (!showLink || linkOrderNum.trim().length < 2) {
+      setLinkResults([]);
+      return;
+    }
+    let cancelled = false;
+    setLinkSearching(true);
+    const timer = setTimeout(async () => {
+      try {
+        const res = await api.listOrders({ search: linkOrderNum.trim() });
+        if (cancelled) return;
+        const filtered = res.orders
+          .filter((o) => o.order_key !== orderKey)
+          .sort((a, b) => b.order_num - a.order_num)
+          .slice(0, 8);
+        setLinkResults(filtered);
+      } catch {
+        if (!cancelled) setLinkResults([]);
+      } finally {
+        if (!cancelled) setLinkSearching(false);
+      }
+    }, 300);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [linkOrderNum, showLink, orderKey]);
 
   async function load() {
     try {
@@ -397,9 +427,30 @@ export default function OrderDetail({ user, orderKey, onBack }) {
               למשל הזמנת תוספת שהגיעה כהזמנה נפרדת מסיגמא — היא תעלה לאותו מקום בתור.
             </div>
             <input
-              type="text" placeholder="מספר ההזמנה השנייה" value={linkOrderNum}
+              type="text" placeholder="מספר הזמנה או שם לקוח" value={linkOrderNum}
               onChange={(e) => setLinkOrderNum(e.target.value)}
+              autoFocus
             />
+            {linkSearching && <div className="meta">מחפש...</div>}
+            {linkResults.length > 0 && (
+              <div className="link-search-results">
+                {linkResults.map((o) => (
+                  <div
+                    key={o.order_key}
+                    className="link-search-row"
+                    onClick={() => act(async () => {
+                      await api.linkOrder(orderKey, String(o.order_num));
+                      setShowLink(false);
+                      setLinkOrderNum('');
+                      setLinkResults([]);
+                    })}
+                  >
+                    <b>הזמנה {o.order_num}</b>
+                    <span className="meta">{o.customer_name} · {statusLabel(o.status)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
             <button
               className="action-btn"
               disabled={busy || !linkOrderNum.trim()}
@@ -409,7 +460,7 @@ export default function OrderDetail({ user, orderKey, onBack }) {
                 setLinkOrderNum('');
               })}
             >
-              קישור
+              קישור לפי מספר מדויק
             </button>
             <button className="action-btn secondary" onClick={() => setShowLink(false)}>ביטול</button>
           </div>

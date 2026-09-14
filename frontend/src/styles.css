@@ -263,6 +263,18 @@ textarea, select {
 }
 .modal-sheet h3 { margin-top: 0; }
 
+/* חיפוש הזמנה לפי מספר/לקוח בשעת קישור הזמנות (בקשת דניאל 14.9.2026) */
+.link-search-results {
+  max-height: 220px; overflow-y: auto; border: 1px solid var(--border);
+  border-radius: 10px; margin: 6px 0 10px;
+}
+.link-search-row {
+  padding: 10px 12px; border-bottom: 1px solid #f0f0f0; cursor: pointer;
+  display: flex; justify-content: space-between; align-items: center; gap: 8px;
+}
+.link-search-row:last-child { border-bottom: none; }
+.link-search-row:active { background: #f3f7fa; }
+
 /* ---------- עדכון חי: הבהוב עדין על כרטיס שהשתנה ---------- */
 @keyframes flash-update {
   0% { box-shadow: 0 0 0 0 rgba(11,92,102,.5); border-color: var(--teal); }
