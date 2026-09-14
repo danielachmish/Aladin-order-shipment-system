@@ -3,6 +3,17 @@
 // webhook בלי אימות Bearer) כדי שסביבת הפיתוח לא תישבר.
 require('dotenv').config();
 
+// תיקון אבטחה (סקירה 14.9.2026): cors() ללא הגבלה קיבל בקשות מכל מקור באינטרנט.
+// רשימת מקורות מותרים — ברירת המחדל כוללת את כתובת ה-frontend היציבה + פיתוח
+// מקומי. אפשר להוסיף/לשנות דרך CORS_ORIGINS (מופרד בפסיקים) ב-.env של Render.
+const defaultCorsOrigins = [
+  'https://aladin-frontend-kappa.vercel.app',
+  'http://localhost:5173',
+];
+const corsOrigins = process.env.CORS_ORIGINS
+  ? process.env.CORS_ORIGINS.split(',').map((s) => s.trim()).filter(Boolean)
+  : defaultCorsOrigins;
+
 const sigma = {
   enabled: !!process.env.SIGMA_SQL_SERVER,
   server: process.env.SIGMA_SQL_SERVER,
@@ -32,4 +43,4 @@ const ups = {
   webhookBearerSecret: process.env.UPS_WEBHOOK_BEARER_SECRET || null,
 };
 
-module.exports = { sigma, ups };
+module.exports = { sigma, ups, corsOrigins };

@@ -1,8 +1,18 @@
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const { db } = require('./db');
 
-// MOCK: סוד קבוע לדמו בלבד. בפרודקשן — בכספת סודות, לא בקוד.
-const JWT_SECRET = process.env.JWT_SECRET || 'aladin-dev-secret-do-not-use-in-prod';
+// תיקון אבטחה (סקירה 14.9.2026): הסוד הקבוע הישן ('aladin-dev-secret-do-not-use-in-prod')
+// היה גלוי בקוד/בהיסטוריית git — אם JWT_SECRET לא הוגדר בסביבה (משתנה סביבה חסר,
+// שירות Render חדש, וכו'), כל אחד שמכיר את המחרוזת הזו יכול לזייף טוקן admin תקין.
+// עכשיו: אם לא הוגדר JWT_SECRET, מייצרים סוד אקראי חד-פעמי לכל הפעלת תהליך —
+// אין יותר נפילה למחרוזת ציבורית ידועה. המשמעות היחידה: אם השרת יופעל מחדש בלי
+// JWT_SECRET מוגדר, טוקנים ישנים לא ימשיכו לעבוד (התנתקות, לא פרצת אבטחה).
+if (!process.env.JWT_SECRET) {
+  // eslint-disable-next-line no-console
+  console.warn('[אבטחה] JWT_SECRET לא מוגדר בסביבה — משתמש בסוד אקראי חד-פעמי לתהליך זה בלבד.');
+}
+const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(48).toString('hex');
 
 function login(username, password) {
   const user = db.prepare('SELECT * FROM users WHERE username = ? AND is_active = 1').get(username);

@@ -4,7 +4,7 @@ const cors = require('cors');
 const { isNew } = require('./db');
 const routes = require('./routes');
 const { attachRealtime } = require('./realtime');
-const { sigma: sigmaCfg, ups: upsCfg } = require('./config');
+const { sigma: sigmaCfg, ups: upsCfg, corsOrigins } = require('./config');
 
 if (isNew) {
   console.log('מסד נתונים חדש זוהה — מריץ seed ראשוני...');
@@ -12,7 +12,12 @@ if (isNew) {
 }
 
 const app = express();
-app.use(cors());
+// נדרש כדי ש-req.ip יזהה נכון את כתובת הלקוח האמיתית (לא את ה-proxy הפנימי של
+// Render) — קריטי להגבלת הקצב על /auth/login (ר' routes.js loginRateLimit).
+app.set('trust proxy', 1);
+// תיקון אבטחה (סקירה 14.9.2026): הוגבל למקורות ידועים (ר' config.js corsOrigins)
+// במקום cors() פתוח שקיבל בקשות מכל אתר באינטרנט.
+app.use(cors({ origin: corsOrigins }));
 app.use(express.json());
 app.use('/api', routes);
 

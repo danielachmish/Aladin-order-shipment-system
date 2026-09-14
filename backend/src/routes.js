@@ -13,11 +13,41 @@ const { computeDashboard } = require('./dashboard');
 
 const router = express.Router();
 
+// תיקון אבטחה (סקירה 14.9.2026): לא הייתה שום הגנה מפני ניחוש-סיסמה בכוח גס על
+// /auth/login (סיסמאות טקסט-גלוי, לעיתים קצרות כמו "1234" — ר' seed.js/auth.js).
+// הגבלת קצב פשוטה בזיכרון, לפי כתובת IP: מקסימום 10 ניסיונות התחברות כושלים
+// לכל IP בחלון של 5 דקות. לא נדרשת תלות חיצונית לצורך זה.
+const loginAttempts = new Map(); // ip -> { count, windowStart }
+const LOGIN_WINDOW_MS = 5 * 60 * 1000;
+const LOGIN_MAX_ATTEMPTS = 10;
+
+function loginRateLimit(req, res, next) {
+  const ip = req.ip || req.connection?.remoteAddress || 'unknown';
+  const now = Date.now();
+  const entry = loginAttempts.get(ip);
+  if (!entry || now - entry.windowStart > LOGIN_WINDOW_MS) {
+    loginAttempts.set(ip, { count: 0, windowStart: now });
+    return next();
+  }
+  if (entry.count >= LOGIN_MAX_ATTEMPTS) {
+    const retryAfterSec = Math.ceil((LOGIN_WINDOW_MS - (now - entry.windowStart)) / 1000);
+    res.setHeader('Retry-After', String(retryAfterSec));
+    return res.status(429).json({ error: 'יותר מדי ניסיונות התחברות — נסה שוב בעוד כמה דקות' });
+  }
+  next();
+}
+
 // ---------- Auth ----------
-router.post('/auth/login', (req, res) => {
+router.post('/auth/login', loginRateLimit, (req, res) => {
   const { username, password } = req.body || {};
   const result = login(username, password);
-  if (!result) return res.status(401).json({ error: 'שם משתמש או סיסמה שגויים' });
+  if (!result) {
+    const ip = req.ip || req.connection?.remoteAddress || 'unknown';
+    const entry = loginAttempts.get(ip) || { count: 0, windowStart: Date.now() };
+    entry.count += 1;
+    loginAttempts.set(ip, entry);
+    return res.status(401).json({ error: 'שם משתמש או סיסמה שגויים' });
+  }
   res.json(result);
 });
 
@@ -28,11 +58,19 @@ router.get('/health', (req, res) => {
 
 // ---------- UPS Webhook ----------
 // ממוקם לפני authMiddleware בכוונה: UPS קורא לנתיב הזה בלי טוקן JWT פנימי שלנו.
-// אימות: אם UPS_WEBHOOK_BEARER_SECRET מוגדר ב-.env, נדרש Authorization: Bearer <secret>
-// תמיד מעל HTTPS (סעיף 9.2, 13). כל עוד לא מוגדר — מתקבל בלי אימות (מצב פיתוח בלבד,
-// מתועד גם ב-.env.example).
+// אימות: נדרש Authorization: Bearer <UPS_WEBHOOK_BEARER_SECRET> תמיד מעל HTTPS
+// (סעיף 9.2, 13).
+// תיקון אבטחה (סקירה 14.9.2026): קודם, כשהסוד לא היה מוגדר, הנתיב פשוט קיבל כל
+// בקשה בלי אימות ("נכשל פתוח") — נתיב חשוף לאינטרנט שיכול לגרום לסגירה אוטומטית
+// של הזמנות אמיתיות (ship_delivered -> closeOrder). עכשיו: אם הסוד לא מוגדר,
+// הנתיב נדחה כברירת מחדל. לבדיקה מקומית בלי סוד: הגדירו
+// ALLOW_UNAUTHENTICATED_UPS_WEBHOOK=true במפורש בסביבת הפיתוח שלכם בלבד.
 router.post('/webhooks/ups', express.json(), (req, res) => {
-  if (upsCfg.webhookBearerSecret) {
+  const devBypass = !upsCfg.webhookBearerSecret && process.env.ALLOW_UNAUTHENTICATED_UPS_WEBHOOK === 'true';
+  if (!devBypass) {
+    if (!upsCfg.webhookBearerSecret) {
+      return res.status(503).json({ error: 'UPS_WEBHOOK_BEARER_SECRET לא מוגדר בשרת — Webhook חסום' });
+    }
     const header = req.headers.authorization || '';
     const token = header.startsWith('Bearer ') ? header.slice(7) : null;
     if (token !== upsCfg.webhookBearerSecret) {
