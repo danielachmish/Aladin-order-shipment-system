@@ -33,7 +33,7 @@ export default function InventoryShortages() {
   // wa.me עם הודעה מוכנה מראש והסוכן בוחר בעצמו למי לשלוח (WhatsApp Web/אפליקציה).
   function shareWhatsApp(order, e) {
     e.stopPropagation();
-    const text = `שלום, מדברים ממחסן אלדין 🙏\nבהזמנה מספר ${order.order_num} התגלה שהפריט "${order.item_name}" (מק"ט ${order.item_code}) חסר כרגע במלאי.\nמתנצלים על אי הנוחות — נעדכן אתכם ברגע שהוא יחזור.`;
+    const text = `שלום, מדברים ממחסן אלדין! 🎉\nבהזמנה מספר ${order.order_num} הפריט "${order.item_name}" (מק"ט ${order.item_code}) היה חסר — שמחים לעדכן שהוא חזר למלאי!\nרוצים שנשלח אותו אליכם?`;
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
   }
 
@@ -73,7 +73,7 @@ export default function InventoryShortages() {
                         <td>{o.agent_name || '—'}</td>
                         <td>{o.missing_qty}</td>
                         <td>
-                          <button className="action-btn secondary" onClick={(e) => shareWhatsApp(o, e)}>📤 עדכון ללקוח</button>
+                          <button className="action-btn secondary" onClick={(e) => shareWhatsApp(o, e)}>📤 חזר למלאי — עדכון ללקוח</button>
                         </td>
                       </tr>
                     ))}

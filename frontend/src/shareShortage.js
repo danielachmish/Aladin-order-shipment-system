@@ -57,7 +57,8 @@ export async function shareShortageSummary(order, shortageItems) {
 
   const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
   const file = new File([blob], `hoser-${order.order_num}.png`, { type: 'image/png' });
-  const text = `הזמנה ${order.order_num}: ${shortageItems.length} פריטים עם חוסר/כמות חלקית`;
+  // נוסח עודכן 14.9.2026 (בקשת דניאל) — עדין ומתנצל, נשלח ללקוח מייד אחרי הליקוט
+  const text = `שלום, מדברים ממחסן אלדין 🙏\nבהזמנה מספר ${order.order_num} התגלו ${shortageItems.length} פריטים עם חוסר/כמות חלקית (פירוט מצורף).\nמתנצלים על אי הנוחות — נעדכן אתכם ברגע שהם יחזרו למלאי.`;
 
   if (navigator.canShare && navigator.canShare({ files: [file] })) {
     try {
