@@ -135,7 +135,14 @@ async function fetchOpenOrders() {
                COALESCE(NULLIF(LTRIM(RTRIM(pr.barCode)), ''), NULLIF(LTRIM(RTRIM(a.FBarCode)), '')) AS [barcode]
         FROM azmanot a
         LEFT JOIN TDemoPritim pr ON pr.prit_ID = a.prit_ID
-        WHERE a.CompanyID = @companyId AND a.sidra = @sidra AND a.azmana_num = @orderNum ORDER BY a.pline
+        WHERE a.CompanyID = @companyId AND a.sidra = @sidra AND a.azmana_num = @orderNum
+          -- תוקן 14.9.2026 (בדיקה בפועל של דניאל, הזמנה 192821): שורות שכבר
+          -- שורשרו במלואן לחשבונית (tquan=0) או בוטלו לא אמורות להופיע
+          -- למלקט בכלל — אותו כלל שכבר קיים ברמת ההזמנה (למעלה, ב-fetchOpenOrders)
+          -- היה חסר כאן ברמת השורה הבודדת, כך שהזמנה עם שורה אחת פתוחה
+          -- הציגה גם את כל השורות הסגורות שלה.
+          AND a.canceled = 0 AND a.tquan > 0
+        ORDER BY a.pline
       `);
     orders.push({
       companyId: h.CompanyID, sidra: h.sidra, orderNum: h.azmana_num,
