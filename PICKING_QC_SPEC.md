@@ -125,16 +125,21 @@ waiting_pick → picking → ready_for_check → ready_to_pack → waiting_picku
 
 דניאל ציין שלא תמיד זוכרים את מספר ההזמנה בזמן קישור. נוסף חיפוש חי בחלונית "קשר להזמנה אחרת": הקלדה (2+ תווים) מפעילה debounce של 300ms שקורא ל-`GET /orders?search=` הקיים (כבר תומך בהתאמה גם לפי מספר הזמנה וגם לפי שם לקוח), מציג עד 8 תוצאות (הכי חדשות קודם) בתור שורות לחיצות — לחיצה על שורה מבצעת קישור מיידי (ללא צורך באישור נוסף). כפתור "קישור לפי מספר מדויק" נשמר כגיבוי ידני. מומש ב-`OrderDetail.jsx` + עיצוב `.link-search-results`/`.link-search-row` ב-`styles.css`.
 
-## 11. מיקום פיזי + ברקוד — מומש ונבדק (14.9.2026)
+## 11. מיקום פיזי + ברקוד — מומש ונבדק סופית (14.9.2026)
 
-דניאל הריץ את `bridge/find-item-columns.js` מול ה-SQL Server האמיתי של סיגמא. תוצאה:
+איתור בשני סבבים (טבלה ראשונה שזוהתה, `TDemoPritim`, התבררה כלא רלוונטית — לא הכילה את הפריטים האמיתיים של דניאל):
 
-- **מיקום פיזי:** עמודת `stock_place` בטבלת קטלוג הפריטים הגלובלית `TDemoPritim` (מזוהה לפי `prit_ID` — אותו `prit_ID` שכבר נשלף כ-`itemCode` בשורות ההזמנה מ-`azmanot`). הטבלה משותפת לכל החברות (אין בה עמודת CompanyID), כך שה-JOIN הוא פשוט לפי `prit_ID` בלבד.
-- **ברקוד:** אותה טבלה, עמודת `barCode`. כגיבוי (אם ריק בקטלוג), נופל בחזרה ל-`azmanot.FBarCode` שכבר קיים על שורת ההזמנה עצמה.
+- **הטבלה הנכונה: `pritim`** — קטלוג הפריטים האמיתי, ממוין לפי `CompanyID`. אומת ישירות מול הזמנה אמיתית עם JBL FLIP 7 (14.9.2026): `stock_place="D02002"`, `barCode="1200130019302"` — תואם בדיוק למה שדניאל רואה בכרטיס הפריט בסיגמא עצמה.
+- ה-JOIN הוא `pritim.prit_ID = azmanot.prit_ID AND pritim.CompanyID = azmanot.CompanyID` (לא רק לפי `prit_ID` — יש `CompanyID` בטבלה, אז משתמשים בו למניעת התנגשות בין חברות).
+- ברקוד: כגיבוי (אם ריק בקטלוג), נופל בחזרה ל-`azmanot.FBarCode` שכבר קיים על שורת ההזמנה עצמה.
 
 **מומש:**
-- `bridge/sync.js` — שאילתת שורות ההזמנה עברה מ-`SELECT ... FROM azmanot` פשוט ל-`LEFT JOIN TDemoPritim` לפי `prit_ID`, עם `NULLIF(LTRIM(RTRIM(...)), '')` כדי להפוך מחרוזות ריקות ל-NULL אמיתי, ו-`COALESCE` לברקוד (קטלוג → azmanot.FBarCode).
-- `backend/src/schema.sql` / `db.js` — נוספה עמודת `order_items_cache.barcode` (מיקום כבר היה קיים מקודם, פשוט לא היה מלא).
-- `backend/src/sigmaIngest.js` — `insertItem` מעדכן גם `barcode` (באותו `ON CONFLICT ... DO UPDATE` הזהיר שכבר קיים ללקיטה/בדיקה — לא נוגע בשדות הפנימיים).
-- `frontend/src/components/PickChecklist.jsx` — הברקוד מוצג בשורת ה-meta ליד מק"ט וכמות ("· ברקוד: ...").
-- **נבדק:** קריאה ישירה ל-`sigmaIngest.ingestOrders` עם `location`/`barcode` מדומים אימתה שהערכים נשמרים נכון ב-`order_items_cache`. הבדיקה מול ה-SQL Server האמיתי (JOIN בפועל) עדיין תלויה בהרצת ה-Bridge המלא אצל דניאל בסביבת הייצור.
+- `bridge/sync.js` — שאילתת שורות ההזמנה: `LEFT JOIN pritim` לפי `prit_ID`+`CompanyID`, עם `NULLIF(LTRIM(RTRIM(...)), '')` להפוך מחרוזות ריקות ל-NULL אמיתי, ו-`COALESCE` לברקוד.
+- `backend/src/schema.sql` / `db.js` — עמודת `order_items_cache.barcode` חדשה (מיקום כבר היה קיים).
+- `backend/src/sigmaIngest.js` — `insertItem` מעדכן גם `barcode` (אותו `ON CONFLICT ... DO UPDATE` הזהיר שלא נוגע בשדות ליקוט/בדיקה פנימיים).
+- `frontend/src/components/PickChecklist.jsx` — הברקוד מוצג בשורת ה-meta ליד מק"ט וכמות.
+- **נבדק וסגור:** גם ברמת הקוד (קריאה ישירה ל-`ingestOrders`) וגם מול הדאטה האמיתי בסיגמא (שאילתות ממוקדות על prit_ID 18813/18815 — JBL FLIP 7 מהצילום מסך של דניאל). דניאל צריך להחליף את `sync.js` בפועל בתיקיית ה-Bridge שלו ולהפעיל מחדש את שירות Windows (`net stop`/`net start "Aladin Sigma Bridge"`).
+
+### 11.1 תיקון נלווה: שורות שהושרשרו לחשבונית עדיין הוצגו למלקט
+
+דיווח דניאל (הזמנה 192821, 14.9.2026): הזמנה עם שורה פתוחה אחת בלבד הציגה למלקט גם את כל שאר השורות שכבר שורשרו במלואן לחשבונית. הכלל `canceled=0 AND tquan>0` היה קיים כבר ברמת ההזמנה (ב-`fetchOpenOrders`, ר' סעיף למעלה על הזמנה 54464) אך חסר בשאילתת שורות הפריטים עצמה — תוקן באותו קובץ (`bridge/sync.js`).
