@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { api } from '../api.js';
 import { onLive } from '../ws.js';
 import UserManagement from '../components/UserManagement.jsx';
+import { formatDateSafe } from '../format.js';
 
 // כלי ניהול — הגדרות ותצורה בלבד (לא KPI/מדדים/חריגות/בקשות דחיפות —
 // אלה עברו לדשבורד, מסך הבית התפעולי של המנהל). ר' בקשת דניאל 14.9.2026.
@@ -54,7 +55,7 @@ export default function ManagementTools() {
                 {status.sigma.bridgeConfigured ? 'Bridge מקומי מחובר' : 'MOCK — Bridge לא מוגדר'}
               </span>
             </div>
-            {status.sigma.lastRun && <div className="meta">סנכרון אחרון: {new Date(status.sigma.lastRun.created_at).toLocaleString('he-IL')}</div>}
+            {status.sigma.lastRun && <div className="meta">סנכרון אחרון: {formatDateSafe(status.sigma.lastRun.created_at)}</div>}
           </div>
           <div className="admin-list-item">
             <div className="top"><b>UPS Webhook</b>

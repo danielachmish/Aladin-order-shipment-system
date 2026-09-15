@@ -1,21 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api.js';
-
-function fmt(dt) {
-  if (!dt) return '—';
-  return new Date(dt.replace(' ', 'T') + 'Z').toLocaleString('he-IL');
-}
-
-function ageText(iso) {
-  if (!iso) return '';
-  const ms = Date.now() - new Date(iso.replace(' ', 'T') + 'Z').getTime();
-  if (ms < 0) return '';
-  const mins = Math.round(ms / 60000);
-  if (mins < 60) return `${mins} דק'`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours} שע'`;
-  return `${Math.floor(hours / 24)} ימים`;
-}
+import { formatDateSafe as fmt, formatAgeSafe as ageText } from '../format.js';
 
 export default function PendingOrders() {
   const [orders, setOrders] = useState([]);

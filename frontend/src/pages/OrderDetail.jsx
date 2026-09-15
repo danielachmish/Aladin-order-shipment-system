@@ -5,6 +5,7 @@ import { onLive } from '../ws.js';
 import OrderTimeline from '../components/OrderTimeline.jsx';
 import PickChecklist from '../components/PickChecklist.jsx';
 import { shareShortageSummary } from '../shareShortage.js';
+import { formatDateSafe } from '../format.js';
 
 const ISSUE_REASONS = ['חוסר במלאי', 'פריט לא נמצא', 'כמות לא תואמת', 'הזמנה מעוכבת', 'אחר'];
 
@@ -330,8 +331,8 @@ export default function OrderDetail({ user, orderKey, onBack }) {
               <div style={{ marginTop: 6 }}><span className={`badge ship-${s.status}`}>{shipLabel(s.status)}</span></div>
               {s.status_desc_heb && <div className="meta">{s.status_desc_heb}</div>}
               {s.exception_desc_heb && <div className="meta" style={{ color: '#c0392b' }}>חריגה: {s.exception_desc_heb}</div>}
-              {s.estimate_delivery && <div className="meta">צפי מסירה: {new Date(s.estimate_delivery).toLocaleString('he-IL')}</div>}
-              {s.delivered_time && <div className="meta">נמסר: {new Date(s.delivered_time).toLocaleString('he-IL')} {s.received_by ? `(${s.received_by})` : ''}</div>}
+              {s.estimate_delivery && <div className="meta">צפי מסירה: {formatDateSafe(s.estimate_delivery)}</div>}
+              {s.delivered_time && <div className="meta">נמסר: {formatDateSafe(s.delivered_time)} {s.received_by ? `(${s.received_by})` : ''}</div>}
             </div>
           ))}
         </>
@@ -345,7 +346,7 @@ export default function OrderDetail({ user, orderKey, onBack }) {
           ? <div className="empty-state">אין עדיין היסטוריה</div>
           : events.map((e) => (
             <div className="history-row" key={e.event_id}>
-              <b>{statusLabel(e.to_status)}</b> · {e.user_name || 'מערכת'} · {new Date(e.created_at).toLocaleString('he-IL')}
+              <b>{statusLabel(e.to_status)}</b> · {e.user_name || 'מערכת'} · {formatDateSafe(e.created_at)}
               {e.note ? ` · ${e.note}` : ''}
             </div>
           ))

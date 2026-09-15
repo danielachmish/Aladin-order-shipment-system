@@ -1,6 +1,8 @@
 :root {
+  /* --- צבעי מותג / סמנטיקה (Design Tokens — Responsive UX Refactor 15.9.2026) --- */
   --teal: #0B5C66;
   --teal-dark: #08454d;
+  --teal-light: #e6f0f1;
   --bg: #F3F7FA;
   --card: #ffffff;
   --border: #D9D9D9;
@@ -12,6 +14,29 @@
   --orange: #c2760a;
   --red: #c0392b;
   --gray: #6b7280;
+
+  /* --- סולם ריווח (בסיס 8px) --- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+
+  /* --- רדיוסים --- */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+
+  /* --- צללים עדינים בלבד --- */
+  --shadow-sm: 0 1px 2px rgba(15, 44, 49, 0.06);
+  --shadow-md: 0 8px 24px rgba(15, 44, 49, 0.08);
+
+  /* --- מעטפת: רוחבי אזור ניווט לפי סוג מכשיר --- */
+  --nav-rail-width: 76px;
+  --nav-sidebar-width: 248px;
+  --content-max-width: 1600px;
 }
 
 * { box-sizing: border-box; }
@@ -20,9 +45,11 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font-family: "Rubik", "Segoe UI", Arial, sans-serif;
+  font-family: "Heebo", "Rubik", "Segoe UI", Arial, sans-serif;
   direction: rtl;
 }
+
+button { font-family: inherit; }
 
 .app-shell {
   max-width: 480px;
@@ -32,8 +59,10 @@ body {
   display: flex;
   flex-direction: column;
   position: relative;
-  padding-bottom: 64px;
+  padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px));
 }
+
+.app-main { display: flex; flex-direction: column; flex: 1; min-width: 0; }
 
 .top-bar {
   background: var(--teal);
@@ -213,22 +242,35 @@ body {
 .history-row { font-size: 12px; color: var(--muted); padding: 6px 0; border-bottom: 1px dashed #eee; }
 .history-row b { color: var(--text); }
 
-.tabbar {
+/* ==================================================================
+   ניווט — מקור אחד (App.jsx), שלוש תצוגות דרך CSS בלבד:
+   מובייל: .mobile-bottom-nav קבוע למטה, עד 5 יעדים (השאר תחת "עוד").
+   טאבלט:  .app-nav הופך ל-Rail צר עם אייקונים בלבד (הטקסט מוסתר).
+   מחשב:   .app-nav הופך ל-Sidebar מלא עם תוויות.
+   ================================================================== */
+.app-nav { display: none; } /* מוסתר כברירת מחדל (מובייל) — נחשף מ-640px */
+
+.mobile-bottom-nav {
   position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);
   width: 100%; max-width: 480px; background: #fff; border-top: 1px solid var(--border);
   display: flex; z-index: 10;
-  /* יותר מדי לשוניות לרוחב מסך טלפון — גוררים כמו מגירה במקום לדחוס אייקונים (בקשת דניאל 14.9.2026) */
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
+  padding-bottom: env(safe-area-inset-bottom, 0);
 }
-.tabbar::-webkit-scrollbar { display: none; }
-.tabbar button {
-  flex: 0 0 auto; min-width: 68px; background: none; border: none; padding: 10px 8px; font-size: 12px; color: var(--muted);
+.mobile-bottom-nav button {
+  flex: 1 1 0; min-width: 0; background: none; border: none; padding: 10px 4px; font-size: 12px; color: var(--muted);
   display: flex; flex-direction: column; align-items: center; gap: 2px; white-space: nowrap;
 }
-.tabbar button.active { color: var(--teal); font-weight: bold; }
-.tabbar .icon { font-size: 18px; }
+.mobile-bottom-nav button.active { color: var(--teal); font-weight: bold; }
+.mobile-bottom-nav .icon { font-size: 18px; }
+
+.more-sheet { display: flex; flex-direction: column; gap: 4px; }
+.more-sheet-item {
+  display: flex; align-items: center; gap: 10px; text-align: start; width: 100%;
+  background: none; border: none; border-radius: var(--radius-sm); padding: 12px 10px; font-size: 15px; color: var(--text);
+}
+.more-sheet-item .icon { font-size: 18px; }
+.more-sheet-item.active { background: var(--teal-light); color: var(--teal); font-weight: 600; }
+.more-sheet-item:active { background: var(--bg); }
 
 .login-screen {
   display: flex; flex-direction: column; justify-content: center; min-height: 100vh; padding: 24px;
@@ -339,28 +381,55 @@ textarea, select {
 .agent-table tr:last-child td { border-bottom: none; }
 
 /* ==================================================================
-   פריסת מחשב — Grid אמיתי שמסתגל לכל רוחב מסך, לא רק "מתיחה" של המובייל.
-   שורה 1: כותרת עליונה על פני כל הרוחב. שורה 2: תפריט צד קבוע + תוכן
-   שממורכז בתוך עצמו ברוחב נוח לקריאה (לא נמתח על פני כל מסך רחב).
+   טאבלט (640–1199px) ומחשב (1200px+) — מעטפת אמיתית, לא "מובייל מוגדל".
+   .app-nav הופך מ-Rail צר עם אייקונים בלבד (טאבלט) ל-Sidebar מלא עם
+   תוויות (מחשב). ה-Topbar נשאר בתוך אזור התוכן בלבד — ה-Sidebar עומד
+   בעצמו לכל גובה המסך, עם הלוגו בראשו (בקשת "Responsive UX Refactor" 15.9.2026).
    ================================================================== */
-@media (min-width: 768px) {
+@media (min-width: 640px) {
   html, body, #root { height: auto; min-height: 100%; }
 
   .app-shell {
     max-width: none;
     width: 100%;
     min-height: 100vh;
-    display: grid;
-    grid-template-columns: 200px 1fr;
-    grid-template-rows: 60px 1fr;
-    grid-template-areas: "topbar topbar" "nav content";
+    display: flex;
+    flex-direction: row;
     padding-bottom: 0;
+    align-items: stretch;
   }
 
-  .app-shell > .top-bar {
-    grid-area: topbar;
-    position: sticky; top: 0; z-index: 20;
-    padding: 0 24px;
+  .app-nav {
+    display: flex;
+    flex-direction: column;
+    flex: 0 0 var(--nav-rail-width);
+    width: var(--nav-rail-width);
+    background: #fff;
+    border-inline-start: 1px solid var(--border);
+    padding: var(--space-3) var(--space-2);
+    gap: 2px;
+    position: sticky;
+    top: 0;
+    align-self: flex-start;
+    height: 100vh;
+    overflow-y: auto;
+  }
+  .app-nav-logo { display: none; } /* יש מקום ללוגו מלא רק בסיידבר של המחשב */
+  .app-nav button {
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    background: none; border: none; border-radius: var(--radius-sm);
+    padding: 10px 4px; font-size: 11px; color: var(--muted); transition: background .15s;
+  }
+  .app-nav button:hover { background: var(--bg); }
+  .app-nav button.active { background: var(--teal-light); color: var(--teal); font-weight: 600; }
+  .app-nav .icon { font-size: 20px; }
+  .app-nav .nav-label { display: none; } /* Rail בטאבלט: אייקון בלבד, שם המסך זמין דרך title (tooltip) */
+
+  .mobile-bottom-nav { display: none; }
+
+  .top-bar {
+    padding: 0 var(--space-5);
+    height: 64px;
   }
   .top-bar .title { font-size: 18px; }
   .top-bar .user { font-size: 13px; }
@@ -372,31 +441,12 @@ textarea, select {
   }
   .live-pill-inline.off { background: rgba(255,255,255,.15); color: #ffd6d1; }
 
-  .tabbar {
-    grid-area: nav;
-    position: sticky; top: 60px; align-self: start;
-    width: auto; max-width: none; height: calc(100vh - 60px);
-    flex-direction: column; justify-content: flex-start;
-    border-top: none; border-left: 1px solid var(--border);
-    background: #fff; padding: 16px 8px; gap: 2px;
-    transform: none; left: auto;
-    overflow-x: visible; overflow-y: auto;
-  }
-  .tabbar button {
-    flex: none; flex-direction: row; justify-content: flex-start; gap: 10px;
-    padding: 11px 14px; font-size: 14px; border-radius: 8px; transition: background .15s;
-  }
-  .tabbar button:hover { background: var(--bg); }
-  .tabbar button.active { background: #e6f0f1; }
-  .tabbar .icon { font-size: 16px; }
-
   .content {
-    grid-area: content;
-    padding: 24px 32px;
-    max-width: 980px;
+    padding: var(--space-5) var(--space-6);
     width: 100%;
+    max-width: var(--content-max-width);
+    margin-inline: auto;
     box-sizing: border-box;
-    justify-self: center; /* בלי זה, כשה-max-width קטן מהעמודה, התוכן נדבק לקצה אחד במקום למרכז */
   }
 
   /* רשימות (הזמנות/חריגות/היסטוריה/ניהול) זורמות לכמה עמודות לפי מקום פנוי,
@@ -404,7 +454,7 @@ textarea, select {
   .list-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: 12px;
+    gap: var(--space-3);
     align-items: start;
   }
   .list-grid .order-card, .list-grid .admin-list-item { margin-bottom: 0; }
@@ -412,19 +462,38 @@ textarea, select {
   .order-card, .admin-list-item, .shipment-card, .detail-header {
     transition: box-shadow .15s, transform .15s;
   }
-  .order-card:hover { box-shadow: 0 3px 10px rgba(0,0,0,.07); transform: translateY(-1px); }
+  .order-card:hover { box-shadow: var(--shadow-sm); transform: translateY(-1px); }
 
   .search-box input { font-size: 14px; }
-  .kpi-grid { grid-template-columns: repeat(4, 1fr); }
+  /* טאבלט לאורך: שני כרטיסי KPI בשורה; מ-1200px זה הופך לארבעה (למטה) */
+  .kpi-grid { grid-template-columns: repeat(2, 1fr); }
   .kpi-card.wide { grid-column: span 2; }
 
-  /* מסך פרטי הזמנה: להשתמש ברוחב הפנוי במקום להישאר צר במרכז */
+  /* מסך פרטי הזמנה: להשתמש ברוחב הפנוי במקום להישאר צר במרכז, אבל בלי
+     להימתח לרוחב אבסורדי במסכים רחבים */
   .content > div > .detail-header,
   .content > .detail-header { max-width: 640px; }
 }
 
-@media (min-width: 1280px) {
-  .app-shell { grid-template-columns: 220px 1fr; }
-  .content { padding: 28px 48px; max-width: 1120px; }
+/* מחשב (1200px+): Sidebar מלא עם תוויות, ותוכן שמנצל את מלוא הרוחב עד תקרה סבירה */
+@media (min-width: 1200px) {
+  .app-nav {
+    flex-basis: var(--nav-sidebar-width);
+    width: var(--nav-sidebar-width);
+    padding: var(--space-4) var(--space-3);
+  }
+  .app-nav-logo {
+    display: block; font-weight: 800; font-size: 20px; color: var(--teal);
+    padding: var(--space-1) var(--space-3) var(--space-4);
+  }
+  .app-nav button {
+    flex-direction: row; justify-content: flex-start; gap: 10px;
+    padding: 11px 14px; font-size: 14px;
+  }
+  .app-nav .icon { font-size: 16px; }
+  .app-nav .nav-label { display: inline; }
+
+  .content { padding: var(--space-6) 48px; }
+  .kpi-grid { grid-template-columns: repeat(4, 1fr); }
   .list-grid { grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
 }

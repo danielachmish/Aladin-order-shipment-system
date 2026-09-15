@@ -2,20 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { api } from '../api.js';
 import { statusLabel } from '../labels.js';
 import { onLive } from '../ws.js';
-
-function fmt(dt) {
-  if (!dt) return '—';
-  return new Date(dt.replace(' ', 'T') + 'Z').toLocaleString('he-IL');
-}
-
-function durationText(startIso, endIso) {
-  if (!startIso || !endIso) return '—';
-  const ms = new Date(endIso.replace(' ', 'T') + 'Z') - new Date(startIso.replace(' ', 'T') + 'Z');
-  if (ms < 0) return '—';
-  const mins = Math.round(ms / 60000);
-  if (mins < 60) return `${mins} דק'`;
-  return `${Math.floor(mins / 60)} שע' ${mins % 60} דק'`;
-}
+import { formatDateSafe as fmt, formatDurationSafe as durationText } from '../format.js';
 
 export default function History({ user, onOpenOrder }) {
   const [orders, setOrders] = useState([]);

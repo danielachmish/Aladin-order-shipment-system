@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { api } from '../api.js';
 import { shipLabel } from '../labels.js';
 import { onLive } from '../ws.js';
+import { formatDateSafe } from '../format.js';
 
 export default function Exceptions({ user, onOpenOrder }) {
   const [data, setData] = useState(null);
@@ -48,7 +49,7 @@ export default function Exceptions({ user, onOpenOrder }) {
             <div className="admin-list-item" key={le.exception_id}>
               <div className="top">
                 <b>שטר {le.track_no}</b>
-                <span className="meta">{new Date(le.created_at).toLocaleString('he-IL')}</span>
+                <span className="meta">{formatDateSafe(le.created_at)}</span>
               </div>
               <div className="meta">מספר לא תקין: {le.bad_ref} — {le.reason}</div>
               {isManager && (

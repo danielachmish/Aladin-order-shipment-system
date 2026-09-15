@@ -2,11 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { api } from '../api.js';
 import { shipLabel } from '../labels.js';
 import { onLive } from '../ws.js';
-
-function fmt(dt) {
-  if (!dt) return '—';
-  return new Date(dt).toLocaleString('he-IL');
-}
+import { formatDateSafe as fmt } from '../format.js';
 
 export default function Shipments({ onOpenOrder }) {
   const [shipments, setShipments] = useState([]);

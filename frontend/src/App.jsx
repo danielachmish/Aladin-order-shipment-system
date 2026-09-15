@@ -28,6 +28,7 @@ export default function App() {
   const [tab, setTab] = useState(() => defaultTabFor(getUser()));
   const [openOrderKey, setOpenOrderKey] = useState(null);
   const [live, setLive] = useState(isConnected());
+  const [moreOpen, setMoreOpen] = useState(false);
 
   useEffect(() => {
     if (getToken()) {
@@ -68,82 +69,117 @@ export default function App() {
     setOpenOrderKey(key);
   }
 
+  // מקור אמת אחד לרשימת הניווט — אותו מידע מוצג כ-Sidebar מלא במחשב, כ-Rail
+  // עם אייקונים בלבד בטאבלט, וכניווט תחתון (עד 5 יעדים, השאר תחת "עוד") במובייל.
+  // ר' "Responsive UX Refactor" (15.9.2026).
+  const NAV_ITEMS = [
+    isManager && { key: 'dashboard', icon: '🏠', label: 'דשבורד' },
+    { key: 'orders', icon: '📦', label: 'הזמנות' },
+    { key: 'exceptions', icon: '⚠️', label: 'חריגות' },
+    canSeeHistory && { key: 'history', icon: '🕒', label: 'היסטוריה' },
+    canSeePending && { key: 'pending', icon: '⏳', label: 'ממתינות' },
+    { key: 'shipments', icon: '🚚', label: 'משלוחים' },
+    isManager && { key: 'inventory', icon: '📉', label: 'חוסרי מלאי' },
+    isManager && { key: 'management', icon: '🛠️', label: 'כלי ניהול' },
+  ].filter(Boolean);
+
+  const MOBILE_MAIN_COUNT = 4;
+  const mobileMain = NAV_ITEMS.slice(0, MOBILE_MAIN_COUNT);
+  const mobileOverflow = NAV_ITEMS.slice(MOBILE_MAIN_COUNT);
+
+  function selectTab(key) {
+    setTab(key);
+    setMoreOpen(false);
+  }
+
+  function NavButton({ item }) {
+    return (
+      <button key={item.key} className={tab === item.key ? 'active' : ''} onClick={() => selectTab(item.key)} title={item.label}>
+        <span className="icon">{item.icon}</span>
+        <span className="nav-label">{item.label}</span>
+      </button>
+    );
+  }
+
+  const pageTitle = openOrderKey ? 'פרטי הזמנה' : (NAV_ITEMS.find((i) => i.key === tab)?.label || 'אלדין');
+
   return (
     <div className="app-shell">
       <ToastStack />
-      <div className="top-bar">
-        <div className="title-group">
-          <div className="title">אלדין</div>
-          <div className={'live-pill live-pill-inline ' + (live ? 'on' : 'off')}>
-            <span className="live-dot" /> {live ? 'מחובר בזמן אמת' : 'אין חיבור'}
+
+      {/* ניווט — מוצג כ-Sidebar (מחשב) / Rail (טאבלט) דרך CSS; במובייל מוסתר ומוחלף ב-.mobile-bottom-nav */}
+      {!openOrderKey && (
+        <nav className="app-nav" aria-label="ניווט ראשי">
+          <div className="app-nav-logo">אלדין</div>
+          {NAV_ITEMS.map((item) => <NavButton key={item.key} item={item} />)}
+        </nav>
+      )}
+
+      <div className="app-main">
+        <div className="top-bar">
+          <div className="title-group">
+            <div className="title app-page-title">{pageTitle}</div>
+            <div className={'live-pill live-pill-inline ' + (live ? 'on' : 'off')}>
+              <span className="live-dot" /> {live ? 'מחובר בזמן אמת' : 'אין חיבור'}
+            </div>
+          </div>
+          <div className="user">{user.name} · {roleLabel(user.role)}
+            <button className="logout" style={{ marginRight: 8 }} onClick={logout}>יציאה</button>
           </div>
         </div>
-        <div className="user">{user.name} · {roleLabel(user.role)}
-          <button className="logout" style={{ marginRight: 8 }} onClick={logout}>יציאה</button>
+        <div className={'live-pill live-pill-mobile-only ' + (live ? 'on' : 'off')}>
+          <span className="live-dot" /> {live ? 'מחובר בזמן אמת' : 'אין חיבור — הנתונים עשויים להיות לא עדכניים'}
         </div>
-      </div>
-      <div className={'live-pill live-pill-mobile-only ' + (live ? 'on' : 'off')}>
-        <span className="live-dot" /> {live ? 'מחובר בזמן אמת' : 'אין חיבור — הנתונים עשויים להיות לא עדכניים'}
-      </div>
 
-      <div className="content">
-        {openOrderKey ? (
-          <OrderDetail user={user} orderKey={openOrderKey} onBack={() => setOpenOrderKey(null)} />
-        ) : tab === 'dashboard' ? (
-          <Dashboard user={user} onOpenOrder={openOrder} />
-        ) : tab === 'orders' ? (
-          <OrdersList user={user} onOpenOrder={openOrder} />
-        ) : tab === 'exceptions' ? (
-          <Exceptions user={user} onOpenOrder={openOrder} />
-        ) : tab === 'history' ? (
-          <History user={user} onOpenOrder={openOrder} />
-        ) : tab === 'pending' ? (
-          <PendingOrders />
-        ) : tab === 'shipments' ? (
-          <Shipments onOpenOrder={openOrder} />
-        ) : tab === 'inventory' ? (
-          <InventoryShortages />
-        ) : (
-          <ManagementTools />
-        )}
+        <div className="content">
+          {openOrderKey ? (
+            <OrderDetail user={user} orderKey={openOrderKey} onBack={() => setOpenOrderKey(null)} />
+          ) : tab === 'dashboard' ? (
+            <Dashboard user={user} onOpenOrder={openOrder} />
+          ) : tab === 'orders' ? (
+            <OrdersList user={user} onOpenOrder={openOrder} />
+          ) : tab === 'exceptions' ? (
+            <Exceptions user={user} onOpenOrder={openOrder} />
+          ) : tab === 'history' ? (
+            <History user={user} onOpenOrder={openOrder} />
+          ) : tab === 'pending' ? (
+            <PendingOrders />
+          ) : tab === 'shipments' ? (
+            <Shipments onOpenOrder={openOrder} />
+          ) : tab === 'inventory' ? (
+            <InventoryShortages />
+          ) : (
+            <ManagementTools />
+          )}
+        </div>
       </div>
 
       {!openOrderKey && (
-        <div className="tabbar">
-          {isManager && (
-            <button className={tab === 'dashboard' ? 'active' : ''} onClick={() => setTab('dashboard')}>
-              <span className="icon">🏠</span>דשבורד
+        <div className="mobile-bottom-nav">
+          {mobileMain.map((item) => (
+            <button key={item.key} className={tab === item.key ? 'active' : ''} onClick={() => selectTab(item.key)}>
+              <span className="icon">{item.icon}</span>{item.label}
+            </button>
+          ))}
+          {mobileOverflow.length > 0 && (
+            <button className={mobileOverflow.some((i) => i.key === tab) ? 'active' : ''} onClick={() => setMoreOpen(true)}>
+              <span className="icon">⋯</span>עוד
             </button>
           )}
-          <button className={tab === 'orders' ? 'active' : ''} onClick={() => setTab('orders')}>
-            <span className="icon">📦</span>הזמנות
-          </button>
-          <button className={tab === 'exceptions' ? 'active' : ''} onClick={() => setTab('exceptions')}>
-            <span className="icon">⚠️</span>חריגות
-          </button>
-          {canSeeHistory && (
-            <button className={tab === 'history' ? 'active' : ''} onClick={() => setTab('history')}>
-              <span className="icon">🕒</span>היסטוריה
-            </button>
-          )}
-          {canSeePending && (
-            <button className={tab === 'pending' ? 'active' : ''} onClick={() => setTab('pending')}>
-              <span className="icon">⏳</span>ממתינות
-            </button>
-          )}
-          <button className={tab === 'shipments' ? 'active' : ''} onClick={() => setTab('shipments')}>
-            <span className="icon">🚚</span>משלוחים
-          </button>
-          {isManager && (
-            <button className={tab === 'inventory' ? 'active' : ''} onClick={() => setTab('inventory')}>
-              <span className="icon">📉</span>חוסרי מלאי
-            </button>
-          )}
-          {isManager && (
-            <button className={tab === 'management' ? 'active' : ''} onClick={() => setTab('management')}>
-              <span className="icon">🛠️</span>כלי ניהול
-            </button>
-          )}
+        </div>
+      )}
+
+      {moreOpen && (
+        <div className="modal-backdrop" onClick={() => setMoreOpen(false)}>
+          <div className="modal-sheet more-sheet" onClick={(e) => e.stopPropagation()}>
+            <h3>עוד</h3>
+            {mobileOverflow.map((item) => (
+              <button key={item.key} className={'more-sheet-item' + (tab === item.key ? ' active' : '')} onClick={() => selectTab(item.key)}>
+                <span className="icon">{item.icon}</span>{item.label}
+              </button>
+            ))}
+            <button className="action-btn secondary" onClick={() => setMoreOpen(false)}>סגירה</button>
+          </div>
         </div>
       )}
     </div>

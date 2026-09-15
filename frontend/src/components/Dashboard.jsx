@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { api } from '../api.js';
 import { onLive } from '../ws.js';
 import { shipLabel, statusLabel, priorityLabel } from '../labels.js';
+import { formatDateSafe, formatCurrencySafe } from '../format.js';
 
 function trend(today, yesterday) {
   if (yesterday === 0 && today === 0) return null;
@@ -118,7 +119,7 @@ export default function Dashboard({ user, onOpenOrder }) {
         </div>
         <div className="kpi-card wide">
           <div className="kpi-label">💰 שווי כספי בצנרת (הזמנות פעילות)</div>
-          <div className="kpi-value">₪{Math.round(d.pipelineValue).toLocaleString('he-IL')}</div>
+          <div className="kpi-value">{formatCurrencySafe(d.pipelineValue)}</div>
         </div>
         <div className="kpi-card wide">
           <div className="kpi-label">🎯 עמידה ביעד — נסגר תוך 24 שעות (30 ימים, {d.slaSampleSize} הזמנות)</div>
@@ -169,7 +170,7 @@ export default function Dashboard({ user, onOpenOrder }) {
                   <b>הזמנה {r.order_num}</b>
                   <span className="meta">{r.customer_name}</span>
                 </div>
-                <div className="meta">סוכן: {r.agent_name} · {new Date(r.created_at).toLocaleString('he-IL')}</div>
+                <div className="meta">סוכן: {r.agent_name} · {formatDateSafe(r.created_at)}</div>
                 <div className="actions">
                   <button className="btn-approve" disabled={busy} onClick={() => decide(r.request_id, true)}>אשר דחיפות</button>
                   <button className="btn-reject" disabled={busy} onClick={() => decide(r.request_id, false)}>דחה</button>
@@ -206,7 +207,7 @@ export default function Dashboard({ user, onOpenOrder }) {
                   <div className="admin-list-item" key={le.exception_id}>
                     <div className="top">
                       <b>שטר {le.track_no}</b>
-                      <span className="meta">{new Date(le.created_at).toLocaleString('he-IL')}</span>
+                      <span className="meta">{formatDateSafe(le.created_at)}</span>
                     </div>
                     <div className="meta">מספר לא תקין: {le.bad_ref} — {le.reason}</div>
                     <div className="actions">
@@ -248,7 +249,7 @@ export default function Dashboard({ user, onOpenOrder }) {
                   <span className={`badge ship-${s.status}`}>{shipLabel(s.status)}</span>
                 </div>
                 {s.status_desc_heb && <div className="meta">{s.status_desc_heb}</div>}
-                {s.estimate_delivery && <div className="meta">צפי מסירה: {new Date(s.estimate_delivery).toLocaleString('he-IL')}</div>}
+                {s.estimate_delivery && <div className="meta">צפי מסירה: {formatDateSafe(s.estimate_delivery)}</div>}
                 {s.orders?.length > 0 && (
                   <div className="meta">
                     הזמנות:{' '}
