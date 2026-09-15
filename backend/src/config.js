@@ -8,6 +8,7 @@ require('dotenv').config();
 // מקומי. אפשר להוסיף/לשנות דרך CORS_ORIGINS (מופרד בפסיקים) ב-.env של Render.
 const defaultCorsOrigins = [
   'https://aladin-frontend-kappa.vercel.app',
+  'https://orders.aladincorp.com',
   'http://localhost:5173',
 ];
 const corsOrigins = process.env.CORS_ORIGINS

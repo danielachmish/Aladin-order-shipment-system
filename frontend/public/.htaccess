@@ -1,0 +1,11 @@
+# Reverse proxy for the Node/Express backend running locally via pm2.
+# Cloudways serves this app on the Hybrid stack (Apache + Nginx), so
+# mod_proxy here forwards /api/* (REST + the /api/live WebSocket) to the
+# backend process on 127.0.0.1:4310. Everything else is served as static
+# files from this directory (the Vite build output).
+RewriteEngine On
+
+RewriteCond %{HTTP:Upgrade} =websocket [NC]
+RewriteRule ^api/(.*)$ ws://127.0.0.1:4310/api/$1 [P,L]
+
+RewriteRule ^api/(.*)$ http://127.0.0.1:4310/api/$1 [P,L]
