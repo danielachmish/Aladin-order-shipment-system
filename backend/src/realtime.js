@@ -2,7 +2,10 @@ const { WebSocketServer } = require('ws');
 const { bus } = require('./bus');
 
 function attachRealtime(httpServer) {
-  const wss = new WebSocketServer({ server: httpServer, path: '/api/live' });
+  // בלי path קבוע: מאחורי ה-PHP-shim ב-Cloudways (ר' server.js, frontend/public/.htaccess)
+  // בקשת ה-upgrade מגיעה כ-/api.php?_p=%2Flive ולא /api/live. השרת הזה משרת רק
+  // את האפליקציה הזו, אז אין סיכון לקבל upgrade ממקור אחר.
+  const wss = new WebSocketServer({ server: httpServer });
 
   wss.on('connection', (ws) => {
     ws.send(JSON.stringify({ type: 'hello', ts: Date.now() }));

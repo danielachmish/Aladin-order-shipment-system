@@ -19,6 +19,20 @@ app.set('trust proxy', 1);
 // במקום cors() פתוח שקיבל בקשות מכל אתר באינטרנט.
 app.use(cors({ origin: corsOrigins }));
 app.use(express.json());
+
+// PHP-proxy shim לפריסת Cloudways: ה-nginx שם מעביר ל-Apache רק בקשות
+// שמסתיימות ב-.php (ר' frontend/public/.htaccess), אז הבקשות מגיעות כ-
+// /api.php?_p=<הנתיב האמיתי>. שאר הפריסות (Render וכו') לא עוברות כאן כי
+// ה-frontend שלהן בונה כתובות /api רגילות (ר' frontend/src/api.js).
+app.use('/api.php', (req, res, next) => {
+  const target = req.query._p;
+  if (typeof target !== 'string' || !target.startsWith('/')) {
+    return res.status(400).json({ error: 'bad proxy request' });
+  }
+  req.url = target;
+  routes(req, res, next);
+});
+
 app.use('/api', routes);
 
 const PORT = process.env.PORT || 4310;

@@ -1,8 +1,18 @@
 // כתובת ה-backend: מוגדרת ב-build דרך VITE_API_BASE (ר' .env.production / Vercel
 // project settings). ברירת המחדל (localhost) מתאימה רק לפיתוח מקומי.
 const API_ROOT = import.meta.env.VITE_API_BASE || 'http://localhost:4310';
-const BASE = API_ROOT + '/api';
-export const WS_BASE = (import.meta.env.VITE_WS_BASE || API_ROOT.replace(/^http/, 'ws')) + '/api/live';
+// PHP-proxy shim (ר' backend/src/server.js, frontend/public/.htaccess) — נדרש
+// בפריסת Cloudways כי ה-nginx שם מעביר ל-Apache רק בקשות שמסתיימות ב-.php.
+// לא רלוונטי בפריסות אחרות (Render/Vercel), אז דלוק רק כש-VITE_API_PHP_SHIM=true.
+const USE_PHP_SHIM = import.meta.env.VITE_API_PHP_SHIM === 'true';
+
+function apiUrl(path) {
+  return USE_PHP_SHIM ? `${API_ROOT}/api.php?_p=${encodeURIComponent(path)}` : `${API_ROOT}/api${path}`;
+}
+
+export const WS_BASE = USE_PHP_SHIM
+  ? `${(import.meta.env.VITE_WS_BASE || API_ROOT.replace(/^http/, 'ws'))}/api.php?_p=${encodeURIComponent('/live')}`
+  : `${(import.meta.env.VITE_WS_BASE || API_ROOT.replace(/^http/, 'ws'))}/api/live`;
 
 let token = localStorage.getItem('aladin_token') || null;
 let currentUser = JSON.parse(localStorage.getItem('aladin_user') || 'null');
@@ -27,7 +37,7 @@ export function clearSession() {
 async function request(path, opts = {}) {
   const headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
   if (token) headers['Authorization'] = `Bearer ${token}`;
-  const res = await fetch(BASE + path, { ...opts, headers });
+  const res = await fetch(apiUrl(path), { ...opts, headers });
   let data;
   try { data = await res.json(); } catch { data = null; }
   if (!res.ok) {
