@@ -2,6 +2,12 @@
 // לפי מזהה/סוג בלבד (לא מסתמך על תוכן ההודעה).
 import { WS_BASE } from './api.js';
 
+// תחת ה-PHP shim (ר' api.js) אין WebSocket אפשרי — PHP-FPM לא יכול להחזיק
+// חיבור duplex פתוח (ר' backend/public/api.php). מוותרים על ניסיונות חיבור
+// חוזרים אינסופיים ופשוט לא מתחברים; שאר האפליקציה עובדת נורמלי דרך REST,
+// רק בלי רענון חי אוטומטי.
+const WS_DISABLED = import.meta.env.VITE_API_PHP_SHIM === 'true';
+
 let socket = null;
 let listeners = [];
 let connected = false;
@@ -14,6 +20,7 @@ export function onLive(cb) {
 }
 
 export function connectLive() {
+  if (WS_DISABLED) return;
   if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) return;
   socket = new WebSocket(WS_BASE);
   socket.onopen = () => { connected = true; listeners.forEach((l) => l({ type: '__connected' })); };

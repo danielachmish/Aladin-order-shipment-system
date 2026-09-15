@@ -1,17 +1,5 @@
-# Reverse proxy for the Node/Express backend running locally via pm2.
-#
-# Cloudways serves this app on the Hybrid stack (Apache + Nginx), but the
-# front-facing Nginx layer only forwards requests whose URL ends in .php to
-# Apache -- everything else 404s before ever reaching Apache/.htaccess (no
-# root access to change that here). So instead of proxying /api/* directly,
-# the frontend (frontend/src/api.js) calls /api.php?_p=<real path>, which
-# Nginx DOES forward to Apache, and this rule then reverse-proxies straight
-# through to the Node backend on 127.0.0.1:4311 (query string, headers,
-# method and body are all preserved by mod_proxy). The backend itself
-# decodes _p back into the real /api/... path (see backend/src/server.js).
-RewriteEngine On
-
-RewriteCond %{HTTP:Upgrade} =websocket [NC]
-RewriteRule ^api\.php$ ws://127.0.0.1:4311/api.php [P,L]
-
-RewriteRule ^api\.php$ http://127.0.0.1:4311/api.php [P,L]
+# NOTE: on this Cloudways server, .php requests are routed by Nginx straight
+# to PHP-FPM, bypassing Apache/.htaccess entirely -- so mod_rewrite/mod_proxy
+# directives here have no effect on /api.php requests (verified empirically).
+# The actual API reverse-proxy lives in api.php itself (PHP cURL), not here.
+Options -Indexes
