@@ -84,6 +84,15 @@ export default function OrderDetail({ user, orderKey, onBack }) {
     return off;
   }, [orderKey]);
 
+  // עדכון מקומי מיידי של שורה בודדת מתשובת ה-API (ליקוט/בדיקה) — בלי לרענן
+  // את כל ההזמנה מהשרת. ר' הערה ב-<PickChecklist> על "כל העמוד קופא".
+  function updateLocalItem(updatedItem) {
+    setData((prev) => ({
+      ...prev,
+      items: prev.items.map((it) => (it.line_no === updatedItem.line_no ? updatedItem : it)),
+    }));
+  }
+
   async function act(fn) {
     setBusy(true);
     setError('');
@@ -255,7 +264,7 @@ export default function OrderDetail({ user, orderKey, onBack }) {
             mode={isPicking ? 'pick' : 'check'}
             order={order}
             items={items}
-            onChanged={load}
+            onItemUpdated={updateLocalItem}
             busy={busy}
             setBusy={setBusy}
             setError={setError}

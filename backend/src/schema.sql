@@ -74,7 +74,9 @@ CREATE TABLE IF NOT EXISTS order_items_cache (
 CREATE TABLE IF NOT EXISTS item_shortage_status (
   item_code  TEXT PRIMARY KEY,
   marked_by  TEXT,
-  marked_at  TEXT NOT NULL DEFAULT (datetime('now'))
+  marked_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  woocommerce_status TEXT, -- NULL (עדיין לא נוסה) | 'closed' | 'skipped' | 'error' — ר' ייעוץ 17.9.2026
+  woocommerce_detail TEXT
 );
 
 -- מצב עבודה נוכחי של כל הזמנה (המנוע המרכזי של האפליקציה)

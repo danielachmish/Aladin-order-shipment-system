@@ -14,19 +14,23 @@ function sortByLocation(items) {
   });
 }
 
-export default function PickChecklist({ mode, order, items, onChanged, busy, setBusy, setError }) {
+export default function PickChecklist({ mode, order, items, onItemUpdated, busy, setBusy, setError }) {
   const sorted = sortByLocation(items);
   const [editingLine, setEditingLine] = useState(null);
   const [editQty, setEditQty] = useState('');
   const [editNote, setEditNote] = useState('');
 
+  // תיקון (17.9.2026, בקשת דניאל): לחיצה על שורה בליקוט/בדיקה גרמה לרענון
+  // מלא של כל ההזמנה (GET נוסף עם כל השורות/אירועים/משלוחים) על כל לחיצה,
+  // מה שהרגיש כאילו "כל העמוד קופא". עכשיו מעדכנים רק את השורה שהשתנתה
+  // מהתשובה של ה-API עצמה — בלי בקשת רענון נוספת בכלל.
   async function markPicked(item, pickStatus, qtyPicked, pickNote) {
     setBusy(true);
     setError('');
     try {
-      await api.pickItem(order.order_key, item.line_no, { qtyPicked, pickStatus, pickNote: pickNote || null });
+      const res = await api.pickItem(order.order_key, item.line_no, { qtyPicked, pickStatus, pickNote: pickNote || null });
       setEditingLine(null);
-      await onChanged();
+      onItemUpdated(res.item);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -38,9 +42,9 @@ export default function PickChecklist({ mode, order, items, onChanged, busy, set
     setBusy(true);
     setError('');
     try {
-      await api.checkItem(order.order_key, item.line_no, { checked, checkNote: checkNote || null });
+      const res = await api.checkItem(order.order_key, item.line_no, { checked, checkNote: checkNote || null });
       setEditingLine(null);
-      await onChanged();
+      onItemUpdated(res.item);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -54,9 +58,9 @@ export default function PickChecklist({ mode, order, items, onChanged, busy, set
     setBusy(true);
     setError('');
     try {
-      await api.correctPickItem(order.order_key, item.line_no, { qtyPicked, pickStatus, checkNote: checkNote || null });
+      const res = await api.correctPickItem(order.order_key, item.line_no, { qtyPicked, pickStatus, checkNote: checkNote || null });
       setEditingLine(null);
-      await onChanged();
+      onItemUpdated(res.item);
     } catch (e) {
       setError(e.message);
     } finally {

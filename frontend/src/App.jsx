@@ -52,14 +52,42 @@ export default function App() {
     }
   }, [user]);
 
+  // תיקון (17.9.2026, בקשת דניאל): ניווט בתוך האפליקציה (החלפת טאב/פתיחת
+  // הזמנה) מעולם לא נרשם ב-history של הדפדפן, אז כפתור "חזור" (בדפדפן או
+  // בטלפון) יצא ישר מהאתר במקום לחזור שלב אחד אחורה בתוך האפליקציה. עכשיו
+  // כל ניווט דוחף רשומת history, ו-popstate (שקורה גם בלחיצת "חזור" בטלפון)
+  // מסנכרן בחזרה את מצב ה-React במקום לצאת מהאפליקציה.
+  useEffect(() => {
+    window.history.replaceState({ tab, openOrderKey: null }, '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    function onPopState(e) {
+      if (e.state) {
+        setTab(e.state.tab || defaultTabFor(user));
+        setOpenOrderKey(e.state.openOrderKey || null);
+      }
+    }
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, [user]);
+
   if (!user) {
-    return <Login onLoggedIn={(u) => { setUser(u); setTab(defaultTabFor(u)); connectLive(); }} />;
+    return <Login onLoggedIn={(u) => {
+      const t = defaultTabFor(u);
+      setUser(u);
+      setTab(t);
+      window.history.replaceState({ tab: t, openOrderKey: null }, '');
+      connectLive();
+    }} />;
   }
 
   function logout() {
     clearSession();
     setUser(null);
     setOpenOrderKey(null);
+    window.history.replaceState({ tab: null, openOrderKey: null }, '');
   }
 
   const isManager = isManagerRole(user.role);
@@ -68,6 +96,7 @@ export default function App() {
   const canSeePending = user.role === 'agent' || isManager;
 
   function openOrder(key) {
+    window.history.pushState({ tab, openOrderKey: key }, '');
     setOpenOrderKey(key);
   }
 
@@ -92,7 +121,9 @@ export default function App() {
   const mobileOverflow = NAV_ITEMS.slice(MOBILE_MAIN_COUNT);
 
   function selectTab(key) {
+    window.history.pushState({ tab: key, openOrderKey: null }, '');
     setTab(key);
+    setOpenOrderKey(null);
     setMoreOpen(false);
   }
 
@@ -137,7 +168,7 @@ export default function App() {
 
         <div className="content">
           {openOrderKey ? (
-            <OrderDetail user={user} orderKey={openOrderKey} onBack={() => setOpenOrderKey(null)} />
+            <OrderDetail user={user} orderKey={openOrderKey} onBack={() => window.history.back()} />
           ) : tab === 'dashboard' ? (
             <Dashboard user={user} onOpenOrder={openOrder} />
           ) : tab === 'orders' ? (

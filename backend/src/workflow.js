@@ -219,6 +219,23 @@ function propagateConfirmedShortages(orderKey, userId) {
     }
   });
   tx();
+
+  // סגירת המוצרים באתר המכירות (WooCommerce) — רק אחרי שהבודק אישר סופית
+  // (ר' ייעוץ 17.9.2026). "ירי ושכח": לא מחכים לרשת ולא חוסמים את finishCheck
+  // אם WooCommerce איטי/למטה — רק מעדכנים woocommerce_status/detail כשמסתיים.
+  const woocommerce = require('./woocommerce');
+  for (const { item_code } of missingItems) {
+    woocommerce.closeProductBySku(item_code)
+      .then((result) => {
+        const status = result.closed ? 'closed' : 'skipped';
+        db.prepare(`UPDATE item_shortage_status SET woocommerce_status = ?, woocommerce_detail = ? WHERE item_code = ?`)
+          .run(status, result.reason || null, item_code);
+      })
+      .catch((e) => {
+        db.prepare(`UPDATE item_shortage_status SET woocommerce_status = 'error', woocommerce_detail = ? WHERE item_code = ?`)
+          .run(e.message, item_code);
+      });
+  }
 }
 
 function finishCheck(orderKey, userId, expectedVersion) {
@@ -250,6 +267,7 @@ function listShortedItems() {
     return {
       item_code: r.item_code, item_name: sample ? sample.item_name : null,
       marked_by: r.marked_by, marked_at: r.marked_at, affected_orders: affectedCount,
+      woocommerce_status: r.woocommerce_status, woocommerce_detail: r.woocommerce_detail,
     };
   });
 }

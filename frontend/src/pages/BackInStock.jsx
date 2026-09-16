@@ -42,8 +42,9 @@ export default function BackInStock() {
     <div>
       <div className="section-title">מוצרים שחזרו למלאי</div>
       <div className="meta" style={{ marginBottom: 8 }}>
-        מוצרים שאומתו כחסרים ומשודרים אוטומטית כ"חסר" בכל ההזמנות הפתוחות שעדיין לא לוקטו.
+        מוצרים שאומתו כחסרים, נסגרים אוטומטית באתר המכירות, ומשודרים כ"חסר" בכל ההזמנות הפתוחות שעדיין לא לוקטו.
         לחצו "חזר למלאי" ברגע שהמוצר באמת זמין שוב — זה ינקה את הסימון מהזמנות שעוד לא נגעו בו.
+        ⚠️ שימו לב: פתיחת המוצר מחדש באתר נשארת ידנית — יש לבדוק שהמחיר עדיין נכון לפני שפותחים.
       </div>
 
       {loading && <div className="empty-state">טוען...</div>}
@@ -59,6 +60,9 @@ export default function BackInStock() {
             <div className="meta">
               מק"ט {it.item_code} · סומן {fmt(it.marked_at)}
             </div>
+            {it.woocommerce_status === 'closed' && <div className="meta">✓ נסגר אוטומטית באתר המכירות</div>}
+            {it.woocommerce_status === 'error' && <div className="meta" style={{ color: '#c0392b' }}>⚠️ סגירה באתר נכשלה: {it.woocommerce_detail}</div>}
+            {it.woocommerce_status === 'skipped' && <div className="meta">ℹ️ {it.woocommerce_detail}</div>}
             <button className="action-btn" disabled={busyCode === it.item_code} onClick={() => clear(it.item_code)}>
               ✓ חזר למלאי
             </button>

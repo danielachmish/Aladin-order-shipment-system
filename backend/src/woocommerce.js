@@ -1,9 +1,12 @@
-// אינטגרציית קריאה-בלבד מול WooCommerce (אתר המכירות) — ר' ייעוץ 16.9.2026.
-// שונה לגמרי מ-Sigma: זה אתר המכירות (מקור אמת לתצוגה ללקוחות), לא ה-ERP.
-// בכוונה לא סוגר/פותח מוצרים אוטומטית — רק שולפת סטטוס (GET) כדי שמנהל
-// מחסן יחליט בעצמו. פרטי החיבור מנוהלים ע"י system_admin בלבד (settings.js
-// בפרונט), נשמרים בטבלת settings הקיימת - לא ב-env, כי דניאל ביקש שדה
-// שאפשר למלא ולעדכן מה-UI, לא רק דרך משתני סביבה בשרת.
+// אינטגרציית WooCommerce (אתר המכירות) — ר' ייעוץ 16-17.9.2026. שונה לגמרי
+// מ-Sigma: זה אתר המכירות (מקור אמת לתצוגה ללקוחות), לא ה-ERP. פרטי החיבור
+// מנוהלים ע"י system_admin בלבד, נשמרים בטבלת settings הקיימת - לא ב-env,
+// כי דניאל ביקש שדה שאפשר למלא ולעדכן מה-UI.
+//
+// עדכון 17.9.2026: סגירת מוצר (stock_status=outofstock) כן קורית אוטומטית —
+// אבל ורק ברגע שהבודק (לא המלקט) מאשר סופית שהפריט חסר (ר' workflow.js
+// propagateConfirmedShortages, נקרא מ-finishCheck). פתיחה מחדש נשארת ידנית
+// לגמרי (מסך "חזר למלאי") — כי מחירים יכולים להשתנות בינתיים.
 const { db } = require('./db');
 
 function getSetting(key) {
@@ -90,4 +93,32 @@ async function getProductStatusBySku(sku) {
   };
 }
 
-module.exports = { getConfig, isConfigured, getMaskedSettings, saveSettings, testConnection, getProductStatusBySku };
+// סגירת מוצר באתר (stock_status=outofstock) לפי SKU — נקראת רק אחרי אישור
+// סופי של בודק QC (ר' workflow.js). לא זורקת אם WooCommerce לא מוגדר או אם
+// המוצר לא נמצא באתר — פשוט מדווחת "skipped", כדי שקריאה אוטומטית לא תרעיש
+// לוגים אצל לקוחות בלי חיבור מוגדר.
+async function closeProductBySku(sku) {
+  const cfg = getConfig();
+  if (!isConfigured(cfg)) return { skipped: true, reason: 'WooCommerce לא מוגדר' };
+
+  const lookupRes = await fetch(`${cfg.storeUrl}/wp-json/wc/v3/products?sku=${encodeURIComponent(sku)}`, {
+    headers: { Authorization: authHeader(cfg) },
+  });
+  if (!lookupRes.ok) throw new Error(`חיפוש מוצר נכשל (${lookupRes.status})`);
+  const list = await lookupRes.json();
+  if (!Array.isArray(list) || list.length === 0) return { skipped: true, reason: 'מוצר לא נמצא באתר' };
+
+  const productId = list[0].id;
+  const updateRes = await fetch(`${cfg.storeUrl}/wp-json/wc/v3/products/${productId}`, {
+    method: 'PUT',
+    headers: { Authorization: authHeader(cfg), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ stock_status: 'outofstock' }),
+  });
+  if (!updateRes.ok) throw new Error(`עדכון מוצר נכשל (${updateRes.status})`);
+  return { closed: true, sku, productId };
+}
+
+module.exports = {
+  getConfig, isConfigured, getMaskedSettings, saveSettings, testConnection,
+  getProductStatusBySku, closeProductBySku,
+};

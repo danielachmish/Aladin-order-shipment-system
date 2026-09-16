@@ -145,4 +145,94 @@ describe('shortage propagation (item_shortage_status)', () => {
       expect(res.status).toBe(403);
     });
   });
+
+  // ר' ייעוץ 17.9.2026: סגירת מוצר ב-WooCommerce אוטומטית, אבל רק אחרי אישור
+  // סופי של הבודק (לא ניחוש המלקט) — "ירי ושכח", לא חוסם את finish-check.
+  describe('WooCommerce auto-close on confirmed shortage', () => {
+    let originalFetch;
+
+    beforeAll(() => { originalFetch = global.fetch; });
+    afterEach(() => { global.fetch = originalFetch; });
+
+    async function configureWooCommerce() {
+      seedUser(db, { username: 'admin1', role: 'system_admin' });
+      const adminToken = await loginAs(request, app, 'admin1');
+      await request(app)
+        .post('/api/admin/woocommerce-settings')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ storeUrl: 'https://shop.example.com', consumerKey: 'ck_1234567890', consumerSecret: 'cs_abcdefghij' });
+    }
+
+    it('closes the product on WooCommerce once the checker confirms the shortage', async () => {
+      await configureWooCommerce();
+      const putCalls = [];
+      global.fetch = async (url, opts = {}) => {
+        if (opts.method === 'PUT') {
+          putCalls.push({ url: String(url), body: JSON.parse(opts.body) });
+          return { ok: true, status: 200, json: async () => ({ id: 42 }) };
+        }
+        return { ok: true, status: 200, json: async () => [{ id: 42, name: 'מוצר' }] }; // חיפוש לפי SKU
+      };
+
+      seedOrder(db, { orderKey: '3|0|20', orderNum: 20, status: 'ready_for_check' });
+      seedItem('3|0|20', 1, 'SKU-CLOSE', { pickStatus: 'missing' });
+      await request(app).post('/api/orders/3%7C0%7C20/finish-check').set('Authorization', `Bearer ${warehouseToken}`).send({});
+
+      await new Promise((r) => setTimeout(r, 30)); // ה-WooCommerce call הוא ירי-ושכח, לא מחכה לו finish-check
+
+      expect(putCalls).toHaveLength(1);
+      expect(putCalls[0].url).toContain('/products/42');
+      expect(putCalls[0].body).toEqual({ stock_status: 'outofstock' });
+
+      const shortage = db.prepare('SELECT * FROM item_shortage_status WHERE item_code = ?').get('SKU-CLOSE');
+      expect(shortage.woocommerce_status).toBe('closed');
+    });
+
+    it('does not attempt to close anything when WooCommerce is not configured', async () => {
+      let fetchCalled = false;
+      global.fetch = async () => { fetchCalled = true; return { ok: true, status: 200, json: async () => [] }; };
+
+      seedOrder(db, { orderKey: '3|0|21', orderNum: 21, status: 'ready_for_check' });
+      seedItem('3|0|21', 1, 'SKU-NOCONFIG', { pickStatus: 'missing' });
+      await request(app).post('/api/orders/3%7C0%7C21/finish-check').set('Authorization', `Bearer ${warehouseToken}`).send({});
+      await new Promise((r) => setTimeout(r, 30));
+
+      expect(fetchCalled).toBe(false); // לא בוצעה שום קריאת רשת אמיתית
+      const shortage = db.prepare('SELECT * FROM item_shortage_status WHERE item_code = ?').get('SKU-NOCONFIG');
+      expect(shortage.woocommerce_status).toBe('skipped');
+      expect(shortage.woocommerce_detail).toBe('WooCommerce לא מוגדר');
+    });
+
+    it('records an error status without failing finish-check when WooCommerce call fails', async () => {
+      await configureWooCommerce();
+      global.fetch = async () => { throw new Error('getaddrinfo ENOTFOUND'); };
+
+      seedOrder(db, { orderKey: '3|0|22', orderNum: 22, status: 'ready_for_check' });
+      seedItem('3|0|22', 1, 'SKU-FAIL', { pickStatus: 'missing' });
+      const res = await request(app).post('/api/orders/3%7C0%7C22/finish-check').set('Authorization', `Bearer ${warehouseToken}`).send({});
+      expect(res.status).toBe(200); // finish-check עצמו לא נכשל בגלל זה
+
+      await new Promise((r) => setTimeout(r, 30));
+      const shortage = db.prepare('SELECT * FROM item_shortage_status WHERE item_code = ?').get('SKU-FAIL');
+      expect(shortage.woocommerce_status).toBe('error');
+      expect(shortage.woocommerce_detail).toContain('ENOTFOUND');
+    });
+
+    it('the "back in stock" screen surfaces the WooCommerce close status', async () => {
+      await configureWooCommerce();
+      global.fetch = async (url, opts = {}) => {
+        if (opts.method === 'PUT') return { ok: true, status: 200, json: async () => ({ id: 7 }) };
+        return { ok: true, status: 200, json: async () => [{ id: 7, name: 'מוצר' }] };
+      };
+
+      seedOrder(db, { orderKey: '3|0|23', orderNum: 23, status: 'ready_for_check' });
+      seedItem('3|0|23', 1, 'SKU-SCREEN', { pickStatus: 'missing' });
+      await request(app).post('/api/orders/3%7C0%7C23/finish-check').set('Authorization', `Bearer ${warehouseToken}`).send({});
+      await new Promise((r) => setTimeout(r, 30));
+
+      const listRes = await request(app).get('/api/inventory/shorted-items').set('Authorization', `Bearer ${managerToken}`);
+      const entry = listRes.body.items.find((i) => i.item_code === 'SKU-SCREEN');
+      expect(entry.woocommerce_status).toBe('closed');
+    });
+  });
 });

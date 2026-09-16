@@ -46,5 +46,7 @@ ensureColumn('workflow_state', 'cod_set_at', 'TEXT');
 ensureColumn('order_items_cache', 'auto_missing', 'INTEGER NOT NULL DEFAULT 0');
 ensureColumn('users', 'sigma_agent_id', 'INTEGER');
 ensureColumn('orders_cache', 'sigma_agent_id', 'INTEGER');
+ensureColumn('item_shortage_status', 'woocommerce_status', 'TEXT');
+ensureColumn('item_shortage_status', 'woocommerce_detail', 'TEXT');
 
 module.exports = { db, isNew };
