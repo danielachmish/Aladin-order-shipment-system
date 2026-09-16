@@ -9,6 +9,13 @@ import { formatDateSafe } from '../format.js';
 
 const ISSUE_REASONS = ['חוסר במלאי', 'פריט לא נמצא', 'כמות לא תואמת', 'הזמנה מעוכבת', 'אחר'];
 
+// תואם STATUS_INDEX ב-backend/src/workflow.js (assertLinkedGroupReady) — משמש
+// רק להתראה מוקדמת בצד לקוח, לא לאכיפה עצמה (זו כבר קיימת בשרת).
+const STATUS_INDEX = {
+  open: 0, waiting_pick: 1, picking: 2, ready_for_check: 3,
+  ready_to_pack: 4, waiting_pickup: 5, delivered_to_ups: 6, closed: 7,
+};
+
 export default function OrderDetail({ user, orderKey, onBack }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
@@ -25,6 +32,9 @@ export default function OrderDetail({ user, orderKey, onBack }) {
   const [linkOrderNum, setLinkOrderNum] = useState('');
   const [linkResults, setLinkResults] = useState([]);
   const [linkSearching, setLinkSearching] = useState(false);
+  const [showPack, setShowPack] = useState(false);
+  const [packageCount, setPackageCount] = useState('');
+  const [palletCount, setPalletCount] = useState('');
 
   // חיפוש הזמנה לקישור — גם לפי מספר וגם לפי שם לקוח (בקשת דניאל 14.9.2026:
   // "לא תמיד זוכר את מספר ההזמנה"). מציג את ההזמנות התואמות, ממוינות מהחדשה
@@ -80,6 +90,32 @@ export default function OrderDetail({ user, orderKey, onBack }) {
     try {
       await fn();
       await load();
+    } catch (e) {
+      setError(e.message);
+      await load();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // התראה מוקדמת על קישור הזמנות — ברגע "סיום בדיקה" (לא ברגע "סיום אריזה",
+  // שזה כבר מאוחר מדי — הקרטון כבר סגור). ר' בקשת דניאל 17.9.2026: האורז
+  // צריך לדעת *לפני* שהוא סוגר קרטון שיש הזמנה מקושרת שעדיין לא הגיעה לשלב.
+  async function handleFinishCheck() {
+    setBusy(true);
+    setError('');
+    try {
+      await api.finishCheck(orderKey, version);
+      const fresh = await api.getOrder(orderKey);
+      setData(fresh);
+      const behind = (fresh.linked_orders || []).filter(
+        (lo) => (STATUS_INDEX[lo.status] ?? 0) < STATUS_INDEX.ready_to_pack
+      );
+      if (behind.length > 0) {
+        window.alert(
+          `⚠️ הזמנה זו מקושרת ל${behind.map((lo) => `הזמנה ${lo.order_num} (${statusLabel(lo.status)})`).join(', ')} — עדיין לא הגיעה לשלב אריזה.\n\nאל תסגרו את הקרטון עד שהיא תגיע לאותו שלב!`
+        );
+      }
     } catch (e) {
       setError(e.message);
       await load();
@@ -261,13 +297,13 @@ export default function OrderDetail({ user, orderKey, onBack }) {
         <button
           className="action-btn" disabled={busy || !allChecked}
           title={!allChecked ? 'יש עוד שורות שלא אושרו בבדיקה' : undefined}
-          onClick={() => act(() => api.finishCheck(orderKey, version))}
+          onClick={handleFinishCheck}
         >
           אישרתי בדיקה — מוכן לאריזה{!allChecked ? ` (${checkDoneCount}/${items.length})` : ''}
         </button>
       )}
       {isWarehouse && order.status === 'ready_to_pack' && (
-        <button className="action-btn" disabled={busy} onClick={() => act(() => api.packDone(orderKey, version))}>סיום אריזה</button>
+        <button className="action-btn" disabled={busy} onClick={() => setShowPack(true)}>סיום אריזה</button>
       )}
       {isWarehouse && order.status === 'waiting_pickup' && (
         <div className="btn-row">
@@ -416,6 +452,50 @@ export default function OrderDetail({ user, orderKey, onBack }) {
               אישור ביטול
             </button>
             <button className="action-btn secondary" onClick={() => setShowCancel(false)}>סגירה</button>
+          </div>
+        </div>
+      )}
+
+      {showPack && (
+        <div className="modal-backdrop" onClick={() => setShowPack(false)}>
+          <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+            <h3>כמה יצא בפועל?</h3>
+            <div className="meta" style={{ marginBottom: 8 }}>
+              כדי שהמזכירה תדע כמה שטרי מטען UPS להפיק. אפשר למלא אחד מהשניים, גם שניהם, או להשאיר ריק ולדלג.
+            </div>
+            <div className="form-row" style={{ marginBottom: 8 }}>
+              <label>חבילות</label>
+              <input
+                type="number" min="0" placeholder="0"
+                value={packageCount}
+                onChange={(e) => setPackageCount(e.target.value)}
+              />
+            </div>
+            <div className="form-row" style={{ marginBottom: 8 }}>
+              <label>משטחים</label>
+              <input
+                type="number" min="0" placeholder="0"
+                value={palletCount}
+                onChange={(e) => setPalletCount(e.target.value)}
+              />
+            </div>
+            <button
+              className="action-btn"
+              disabled={busy}
+              onClick={() => act(async () => {
+                await api.packDone(
+                  orderKey, version,
+                  packageCount.trim() ? Number(packageCount) : null,
+                  palletCount.trim() ? Number(palletCount) : null
+                );
+                setShowPack(false);
+                setPackageCount('');
+                setPalletCount('');
+              })}
+            >
+              סיום אריזה
+            </button>
+            <button className="action-btn secondary" onClick={() => setShowPack(false)}>ביטול</button>
           </div>
         </div>
       )}

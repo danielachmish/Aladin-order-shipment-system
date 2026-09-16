@@ -36,5 +36,12 @@ ensureColumn('order_items_cache', 'barcode', 'TEXT'); // ר' PICKING_QC_SPEC.md 
 ensureColumn('order_items_cache', 'pick_marked_at', 'TEXT');
 ensureColumn('workflow_state', 'shortage_invoiced_at', 'TEXT');
 ensureColumn('workflow_state', 'shortage_invoiced_by', 'TEXT');
+ensureColumn('workflow_state', 'package_count', 'INTEGER');
+ensureColumn('workflow_state', 'pallet_count', 'INTEGER');
+ensureColumn('workflow_state', 'cod_type', "TEXT NOT NULL DEFAULT 'none'");
+ensureColumn('workflow_state', 'cod_amount', 'REAL');
+ensureColumn('workflow_state', 'cod_due_date', 'TEXT');
+ensureColumn('workflow_state', 'cod_set_by', 'TEXT');
+ensureColumn('workflow_state', 'cod_set_at', 'TEXT');
 
 module.exports = { db, isNew };

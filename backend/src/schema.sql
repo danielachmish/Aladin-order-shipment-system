@@ -83,6 +83,13 @@ CREATE TABLE IF NOT EXISTS workflow_state (
                          -- כל ההזמנות עם אותו group id "נצמדות" לאותו מקום בתור. ר' בקשת דניאל 14.9.2026.
   shortage_invoiced_at TEXT, -- מזכירה סימנה שהוציאה חשבונית מתוקנת על החוסרים (ר' PICKING_QC_SPEC.md סעיף 12)
   shortage_invoiced_by TEXT,
+  package_count   INTEGER, -- כמה חבילות יצאו בפועל, מוזן ב-pack-done (בקשת דניאל 17.9.2026 — כדי שהמזכירה תדע כמה שטרי מטען UPS להפיק)
+  pallet_count    INTEGER, -- כמה משטחים יצאו בפועל, מוזן ב-pack-done
+  cod_type        TEXT NOT NULL DEFAULT 'none', -- none | full | custom | full_plus_extra (גוביינא, ר' בקשת דניאל 17.9.2026)
+  cod_amount      REAL, -- סכום מפורש: עבור custom = הסכום כולו, עבור full_plus_extra = התוספת בלבד
+  cod_due_date    TEXT, -- תאריך פירעון השיק
+  cod_set_by      TEXT,
+  cod_set_at      TEXT,
   updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (order_key) REFERENCES orders_cache(order_key)
 );

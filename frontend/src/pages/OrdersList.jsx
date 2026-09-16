@@ -125,6 +125,7 @@ export default function OrdersList({ user, onOpenOrder }) {
             <span className={`badge status-${o.status}`}>{statusLabel(o.status)}</span>
             {o.priority !== 'normal' && <span className={`badge priority-${o.priority}`}>{priorityLabel(o.priority)}</span>}
             {o.pending_addition_note && <span className="badge status-on_hold">⏳ ממתינה תוספת</span>}
+            {o.linked_group_id && <span className="badge status-on_hold">🔗 מקושרת</span>}
           </div>
           <div className="meta">
             {o.status === 'waiting_pick' && o.queue_position && (

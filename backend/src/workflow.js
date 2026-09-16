@@ -201,13 +201,21 @@ function finishCheck(orderKey, userId, expectedVersion) {
   return writeTransition(orderKey, userId, 'ready_to_pack', {}, 'אישור בדיקה — מוכן לאריזה');
 }
 
-function packDone(orderKey, userId, expectedVersion) {
+// packageCount/palletCount: כמה חבילות/משטחים יצאו בפועל מההזמנה (בקשת
+// דניאל 17.9.2026) — כדי שהמזכירה תדע במסך היסטוריה כמה שטרי מטען UPS
+// להפיק, בלי לנחש/לספור מחדש. שניהם אופציונליים ויכולים להתקיים יחד
+// (למשל גם חבילות וגם משטח מאותה הזמנה).
+function packDone(orderKey, userId, expectedVersion, packageCount, palletCount) {
   const state = getState(orderKey);
   if (!state) throw new RuleError('הזמנה לא נמצאה');
   if (state.status !== 'ready_to_pack') throw new RuleError('ההזמנה אינה מוכנה לאריזה');
   assertVersion(state, expectedVersion);
   assertLinkedGroupReady(state);
-  return writeTransition(orderKey, userId, 'waiting_pickup', {}, 'סיום אריזה');
+  const extra = {
+    package_count: packageCount != null ? Number(packageCount) : null,
+    pallet_count: palletCount != null ? Number(palletCount) : null,
+  };
+  return writeTransition(orderKey, userId, 'waiting_pickup', extra, 'סיום אריזה');
 }
 
 function deliverToUps(orderKey, userId, expectedVersion) {
@@ -342,6 +350,73 @@ function setPriority(orderKey, priority, managerId) {
   return updated;
 }
 
+const COD_TYPES = ['none', 'full', 'custom', 'full_plus_extra'];
+
+// גוביינא (שיק דחוי) — ר' ייעוץ 17.9.2026. מוגדר ע"י המזכירה (warehouse_manager)
+// במסך היסטוריה, עצמאי מסטטוס העבודה. הזמנות מקושרות יוצאות כמשלוח פיזי אחד,
+// אז הגדרה על הזמנה מקושרת משתכפלת אוטומטית על כל ההזמנות באותה קבוצה — כדי
+// שלא משנה דרך איזו הזמנה בקבוצה נכנסים, רואים תמיד את אותו מידע.
+function setCod(orderKey, userId, { codType, amount, dueDate }) {
+  if (!COD_TYPES.includes(codType)) throw new RuleError('סוג גוביינא לא תקין');
+  if ((codType === 'custom' || codType === 'full_plus_extra') && (amount == null || Number(amount) <= 0)) {
+    throw new RuleError('יש להזין סכום');
+  }
+  if (codType !== 'none' && !dueDate) throw new RuleError('יש להזין תאריך פירעון');
+
+  const state = getState(orderKey);
+  if (!state) throw new RuleError('הזמנה לא נמצאה');
+
+  const groupKeys = state.linked_group_id
+    ? db.prepare('SELECT order_key FROM workflow_state WHERE linked_group_id = ?').all(state.linked_group_id).map((r) => r.order_key)
+    : [orderKey];
+
+  const tx = db.transaction(() => {
+    for (const key of groupKeys) {
+      const s = getState(key);
+      db.prepare(`
+        UPDATE workflow_state
+        SET cod_type = ?, cod_amount = ?, cod_due_date = ?, cod_set_by = ?, cod_set_at = datetime('now'),
+            version = version + 1, updated_at = datetime('now')
+        WHERE order_key = ?
+      `).run(
+        codType,
+        codType === 'none' ? null : (amount != null ? Number(amount) : null),
+        codType === 'none' ? null : dueDate,
+        userId, key
+      );
+      db.prepare(`
+        INSERT INTO workflow_events (event_id, order_key, user_id, from_status, to_status, note)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(uid('evt'), key, userId, s.status, s.status, `גוביינא עודכנה: ${codType}`);
+    }
+  });
+  tx();
+
+  for (const key of groupKeys) {
+    const updated = getState(key);
+    emitChange('order', { order_key: key, status: updated.status, version: updated.version });
+  }
+  return getState(orderKey);
+}
+
+// מחשב את סכום הגוביינא בפועל להצגה: full/full_plus_extra מסתכמים על כל
+// ההזמנות בקבוצה המקושרת (משלוח פיזי אחד), לא רק ההזמנה הבודדת.
+function computeCodDisplay(orderKey) {
+  const state = getState(orderKey);
+  if (!state || state.cod_type === 'none') return 0;
+  if (state.cod_type === 'custom') return state.cod_amount || 0;
+
+  const totalRow = state.linked_group_id
+    ? db.prepare(`
+        SELECT SUM(oc.total_amount) AS total FROM orders_cache oc
+        JOIN workflow_state ws ON ws.order_key = oc.order_key
+        WHERE ws.linked_group_id = ?
+      `).get(state.linked_group_id)
+    : db.prepare('SELECT total_amount AS total FROM orders_cache WHERE order_key = ?').get(orderKey);
+  const groupTotal = totalRow?.total || 0;
+  return state.cod_type === 'full_plus_extra' ? groupTotal + (state.cod_amount || 0) : groupTotal;
+}
+
 // דוח חוסרים למזכירה (בקשת דניאל 14.9.2026): מזכירה (יוזר warehouse_manager)
 // מסמנת ברמת ההזמנה כולה שהוציאה חשבונית מתוקנת על כל החוסרים בה. עצמאי
 // לגמרי מסטטוס העבודה של ההזמנה (אפשר לסמן גם על הזמנה סגורה).
@@ -462,4 +537,5 @@ module.exports = {
   updateItemPick, updateItemCheck, finishCheck, correctPickedItem,
   markShortageInvoiced, unmarkShortageInvoiced,
   linkOrders, unlinkOrder,
+  setCod, computeCodDisplay,
 };

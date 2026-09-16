@@ -235,6 +235,7 @@ function baseOrderRow(order_key) {
     SELECT oc.*, ws.status, ws.priority, ws.agent_id, ws.claimed_by, ws.queue_entered_at,
            ws.version, ws.hold_reason, ws.pre_wait_status, ws.pending_addition_note, ws.delivery_method,
            ws.linked_group_id, ws.updated_at AS wf_updated_at,
+           ws.package_count, ws.pallet_count, ws.cod_type, ws.cod_amount, ws.cod_due_date,
            COALESCE(u.display_name, oc.sigma_agent_name) AS agent_name, cu.display_name AS claimed_by_name
     FROM orders_cache oc
     JOIN workflow_state ws ON ws.order_key = oc.order_key
@@ -348,7 +349,8 @@ router.get('/orders/:key', (req, res) => {
       `).all(order.linked_group_id, key)
     : [];
 
-  res.json({ order, items, events, shipments, urgent_requests: urgentReqs, queue_position: queuePos, linked_orders: linkedOrders });
+  const codDisplayAmount = wf.computeCodDisplay(key);
+  res.json({ order: { ...order, cod_display_amount: codDisplayAmount }, items, events, shipments, urgent_requests: urgentReqs, queue_position: queuePos, linked_orders: linkedOrders });
 });
 
 // הזמנות מקושרות ידנית — ר' workflow.js linkOrders (בקשת דניאל 14.9.2026)
@@ -435,7 +437,7 @@ router.post('/orders/:key/finish-check', requireRole('warehouse', 'warehouse_man
   handleWorkflowAction((key, req) => wf.finishCheck(key, req.user.id, req.body?.expectedVersion)));
 
 router.post('/orders/:key/pack-done', requireRole('warehouse', 'warehouse_manager'),
-  handleWorkflowAction((key, req) => wf.packDone(key, req.user.id, req.body?.expectedVersion)));
+  handleWorkflowAction((key, req) => wf.packDone(key, req.user.id, req.body?.expectedVersion, req.body?.packageCount, req.body?.palletCount)));
 
 router.post('/orders/:key/deliver-ups', requireRole('warehouse', 'warehouse_manager'),
   handleWorkflowAction((key, req) => wf.deliverToUps(key, req.user.id, req.body?.expectedVersion)));
@@ -567,7 +569,9 @@ router.get('/history', requireRole('warehouse', 'warehouse_manager', 'system_adm
 
   let sql = `
     SELECT oc.order_key, oc.order_num, oc.customer_name, oc.total_amount,
-           ws.status, ws.priority, ws.updated_at, ws.shortage_invoiced_at, ws.shortage_invoiced_by
+           ws.status, ws.priority, ws.updated_at, ws.shortage_invoiced_at, ws.shortage_invoiced_by,
+           ws.package_count, ws.pallet_count, ws.linked_group_id,
+           ws.cod_type, ws.cod_amount, ws.cod_due_date
     FROM orders_cache oc
     JOIN workflow_state ws ON ws.order_key = oc.order_key
     WHERE ws.status IN ('ready_for_check','ready_to_pack','waiting_pickup','delivered_to_ups','closed')
@@ -616,6 +620,7 @@ router.get('/history', requireRole('warehouse', 'warehouse_manager', 'system_adm
       picked_by: start && start.user_id ? (userStmt.get(start.user_id) || {}).display_name : null,
       pick_finished_at: end ? end.created_at : null,
       shortage_invoiced_by_name: o.shortage_invoiced_by ? (userStmt.get(o.shortage_invoiced_by) || {}).display_name : null,
+      cod_display_amount: wf.computeCodDisplay(o.order_key),
       issues,
       shortages,
     };
@@ -631,6 +636,12 @@ router.post('/orders/:key/mark-shortage-invoiced', requireRole('warehouse_manage
 
 router.post('/orders/:key/unmark-shortage-invoiced', requireRole('warehouse_manager', 'system_admin'),
   handleWorkflowAction((key, req) => wf.unmarkShortageInvoiced(key, req.user.id)));
+
+// גוביינא (שיק דחוי) — ר' ייעוץ 17.9.2026. המזכירה בלבד (warehouse_manager/system_admin).
+router.post('/orders/:key/cod', requireRole('warehouse_manager', 'system_admin'),
+  handleWorkflowAction((key, req) => wf.setCod(key, req.user.id, {
+    codType: req.body?.codType, amount: req.body?.amount, dueDate: req.body?.dueDate,
+  })));
 
 // "חוסרי מלאי היום" — תצוגה מרוכזת לפי מק"ט למנהל מחסן (לא לפי הזמנה, כמו
 // דוח החוסרים למזכירה — כאן המטרה לדעת מה חסר במלאי בפועל). ר' בקשת דניאל 14.9.2026.
