@@ -43,5 +43,6 @@ ensureColumn('workflow_state', 'cod_amount', 'REAL');
 ensureColumn('workflow_state', 'cod_due_date', 'TEXT');
 ensureColumn('workflow_state', 'cod_set_by', 'TEXT');
 ensureColumn('workflow_state', 'cod_set_at', 'TEXT');
+ensureColumn('order_items_cache', 'auto_missing', 'INTEGER NOT NULL DEFAULT 0');
 
 module.exports = { db, isNew };

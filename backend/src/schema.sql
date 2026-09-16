@@ -61,7 +61,18 @@ CREATE TABLE IF NOT EXISTS order_items_cache (
   checked     INTEGER NOT NULL DEFAULT 0, -- 0/1 — האם הבודק אישר את השורה
   check_note  TEXT,    -- הערת בודק אם תיקן משהו
   pick_marked_at TEXT, -- מתי סומן pick_status לאחרונה (מלקט או תיקון בודק) — לדוח "חוסרי מלאי היום"
+  auto_missing INTEGER NOT NULL DEFAULT 0, -- 1 = סומן אוטומטית "חסר" כי אומת כחוסר בהזמנה אחרת (ר' item_shortage_status), לא ע"י המלקט עצמו
   PRIMARY KEY (order_key, line_no)
+);
+
+-- מוצרים שאומתו כחסרים במלאי בפועל (ר' ייעוץ 17.9.2026, נושא 4) — ע"י בודק
+-- QC שהשאיר שורה 'missing' עד finishCheck. משדר את הסימון "חסר" לכל שאר
+-- ההזמנות הפתוחות עם אותו item_code שעוד לא לוקטו, כדי שהמלקטת תדלג עליהן
+-- (עם כפתור תיקון קיים ב-UI). מנוקה ידנית ע"י מנהל מחסן דרך מסך "חזר למלאי".
+CREATE TABLE IF NOT EXISTS item_shortage_status (
+  item_code  TEXT PRIMARY KEY,
+  marked_by  TEXT,
+  marked_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- מצב עבודה נוכחי של כל הזמנה (המנוע המרכזי של האפליקציה)

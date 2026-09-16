@@ -102,6 +102,8 @@ export const api = {
     const qs = new URLSearchParams(params).toString();
     return request('/inventory/shortages-by-supplier' + (qs ? `?${qs}` : ''));
   },
+  shortedItems: () => request('/inventory/shorted-items'),
+  clearShortedItem: (itemCode) => request(`/inventory/shorted-items/${encodeURIComponent(itemCode)}/clear`, { method: 'POST' }),
 
   dashboard: () => request('/dashboard'),
   pendingOrders: () => request('/pending-orders'),

@@ -9,6 +9,7 @@ import Shipments from './pages/Shipments.jsx';
 import Dashboard from './components/Dashboard.jsx';
 import ManagementTools from './pages/ManagementTools.jsx';
 import InventoryShortages from './pages/InventoryShortages.jsx';
+import BackInStock from './pages/BackInStock.jsx';
 import { getToken, getUser, clearSession } from './api.js';
 import { roleLabel } from './labels.js';
 import { connectLive, onLive, isConnected } from './ws.js';
@@ -80,6 +81,7 @@ export default function App() {
     canSeePending && { key: 'pending', icon: '⏳', label: 'ממתינות' },
     { key: 'shipments', icon: '🚚', label: 'משלוחים' },
     isManager && { key: 'inventory', icon: '📉', label: 'חוסרי מלאי' },
+    isManager && { key: 'backinstock', icon: '🔄', label: 'חזר למלאי' },
     isManager && { key: 'management', icon: '🛠️', label: 'כלי ניהול' },
   ].filter(Boolean);
 
@@ -148,6 +150,8 @@ export default function App() {
             <Shipments onOpenOrder={openOrder} />
           ) : tab === 'inventory' ? (
             <InventoryShortages />
+          ) : tab === 'backinstock' ? (
+            <BackInStock />
           ) : (
             <ManagementTools user={user} />
           )}

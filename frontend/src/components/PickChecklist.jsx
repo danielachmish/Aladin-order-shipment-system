@@ -83,7 +83,7 @@ export default function PickChecklist({ mode, order, items, onChanged, busy, set
                   <div className={`meta pick-status-line ${it.pick_status}`}>
                     {it.pick_status === 'picked' && `✓ נלקט הכל`}
                     {it.pick_status === 'partial' && `⚠️ חלקי — ${it.qty_picked} מתוך ${it.quantity}`}
-                    {it.pick_status === 'missing' && `❌ לא נמצא`}
+                    {it.pick_status === 'missing' && (it.auto_missing ? `🔒 ידוע כחסר במלאי — דלגו (או לחצו תיקון אם בכל זאת יש)` : `❌ לא נמצא`)}
                     {it.pick_note ? ` · ${it.pick_note}` : ''}
                   </div>
                 )}

@@ -121,7 +121,7 @@ function updateItemPick(orderKey, lineNo, userId, { qtyPicked, pickStatus, pickN
   if (!item) throw new RuleError('שורת פריט לא נמצאה');
 
   db.prepare(`
-    UPDATE order_items_cache SET qty_picked = ?, pick_status = ?, pick_note = ?, pick_marked_at = datetime('now')
+    UPDATE order_items_cache SET qty_picked = ?, pick_status = ?, pick_note = ?, pick_marked_at = datetime('now'), auto_missing = 0
     WHERE order_key = ? AND line_no = ?
   `).run(pickStatus === 'missing' ? 0 : qtyPicked, pickStatus, pickNote || null, orderKey, lineNo);
 
@@ -179,12 +179,46 @@ function correctPickedItem(orderKey, lineNo, userId, { qtyPicked, pickStatus, ch
 
   db.prepare(`
     UPDATE order_items_cache
-    SET qty_picked = ?, pick_status = ?, checked = 1, check_note = ?, pick_marked_at = datetime('now')
+    SET qty_picked = ?, pick_status = ?, checked = 1, check_note = ?, pick_marked_at = datetime('now'), auto_missing = 0
     WHERE order_key = ? AND line_no = ?
   `).run(pickStatus === 'missing' ? 0 : qtyPicked, pickStatus, checkNote || null, orderKey, lineNo);
 
   emitChange('order', { order_key: orderKey, status: state.status, version: state.version });
   return db.prepare('SELECT * FROM order_items_cache WHERE order_key = ? AND line_no = ?').get(orderKey, lineNo);
+}
+
+// שידור "חסר מאומת" (ר' ייעוץ 17.9.2026, נושא 4) לכל שאר ההזמנות הפתוחות עם
+// אותו item_code שעוד לא לוקטו (pick_status IS NULL), כדי שהמלקטת תדלג עליהן
+// (יש כפתור תיקון קיים ב-UI אם בכל זאת נמצא). "מאומת" = השורה שרדה כ-missing
+// עד סוף שלב הבדיקה — הבודק כבר קיבל הזדמנות לתקן ולא תיקן.
+function propagateConfirmedShortages(orderKey, userId) {
+  const missingItems = db.prepare(`
+    SELECT DISTINCT item_code FROM order_items_cache WHERE order_key = ? AND pick_status = 'missing' AND item_code IS NOT NULL
+  `).all(orderKey);
+  if (missingItems.length === 0) return;
+
+  const tx = db.transaction(() => {
+    for (const { item_code } of missingItems) {
+      db.prepare(`
+        INSERT INTO item_shortage_status (item_code, marked_by, marked_at) VALUES (?, ?, datetime('now'))
+        ON CONFLICT(item_code) DO UPDATE SET marked_by = excluded.marked_by, marked_at = datetime('now')
+      `).run(item_code, userId);
+
+      const affected = db.prepare(`
+        SELECT order_key, line_no FROM order_items_cache
+        WHERE item_code = ? AND order_key != ? AND pick_status IS NULL
+      `).all(item_code, orderKey);
+      for (const row of affected) {
+        db.prepare(`
+          UPDATE order_items_cache
+          SET pick_status = 'missing', qty_picked = 0, auto_missing = 1, pick_marked_at = datetime('now')
+          WHERE order_key = ? AND line_no = ?
+        `).run(row.order_key, row.line_no);
+        emitChange('order', { order_key: row.order_key });
+      }
+    }
+  });
+  tx();
 }
 
 function finishCheck(orderKey, userId, expectedVersion) {
@@ -198,7 +232,46 @@ function finishCheck(orderKey, userId, expectedVersion) {
   ).get(orderKey).c;
   if (unchecked > 0) throw new RuleError(`יש ${unchecked} שורות שעדיין לא אושרו בבדיקה`);
 
-  return writeTransition(orderKey, userId, 'ready_to_pack', {}, 'אישור בדיקה — מוכן לאריזה');
+  const updated = writeTransition(orderKey, userId, 'ready_to_pack', {}, 'אישור בדיקה — מוכן לאריזה');
+  propagateConfirmedShortages(orderKey, userId);
+  return updated;
+}
+
+// מסך "מוצרים שחזרו למלאי" (מנהל מחסן) — מנקה את הסימון האוטומטי מכל
+// ההזמנות שעדיין לא לוקטו (לא נוגע בשורות שהמלקט כבר טיפל בהן בעצמו).
+function listShortedItems() {
+  const rows = db.prepare(`SELECT * FROM item_shortage_status ORDER BY marked_at DESC`).all();
+  return rows.map((r) => {
+    const sample = db.prepare(`SELECT item_name FROM order_items_cache WHERE item_code = ? AND item_name IS NOT NULL LIMIT 1`).get(r.item_code);
+    const affectedCount = db.prepare(`
+      SELECT COUNT(*) c FROM order_items_cache
+      WHERE item_code = ? AND auto_missing = 1 AND pick_status = 'missing'
+    `).get(r.item_code).c;
+    return {
+      item_code: r.item_code, item_name: sample ? sample.item_name : null,
+      marked_by: r.marked_by, marked_at: r.marked_at, affected_orders: affectedCount,
+    };
+  });
+}
+
+function clearShortedItem(itemCode) {
+  const tx = db.transaction(() => {
+    db.prepare('DELETE FROM item_shortage_status WHERE item_code = ?').run(itemCode);
+    const rows = db.prepare(`
+      SELECT order_key, line_no FROM order_items_cache
+      WHERE item_code = ? AND auto_missing = 1 AND pick_status = 'missing'
+    `).all(itemCode);
+    for (const row of rows) {
+      db.prepare(`
+        UPDATE order_items_cache
+        SET pick_status = NULL, qty_picked = NULL, auto_missing = 0, pick_marked_at = NULL
+        WHERE order_key = ? AND line_no = ?
+      `).run(row.order_key, row.line_no);
+      emitChange('order', { order_key: row.order_key });
+    }
+  });
+  tx();
+  return { cleared: itemCode };
 }
 
 // packageCount/palletCount: כמה חבילות/משטחים יצאו בפועל מההזמנה (בקשת
@@ -538,4 +611,5 @@ module.exports = {
   markShortageInvoiced, unmarkShortageInvoiced,
   linkOrders, unlinkOrder,
   setCod, computeCodDisplay,
+  listShortedItems, clearShortedItem,
 };

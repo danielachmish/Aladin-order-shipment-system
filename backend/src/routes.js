@@ -684,6 +684,17 @@ router.get('/inventory/shortages', requireRole('warehouse_manager', 'system_admi
   res.json({ items, days });
 });
 
+// "מוצרים שחזרו למלאי" (ר' ייעוץ 17.9.2026, נושא 4) — רשימת פריטים שהוגדרו
+// "חסר מאומת" (ר' workflow.js propagateConfirmedShortages) וכפתור לנקות.
+router.get('/inventory/shorted-items', requireRole('warehouse_manager', 'system_admin'), (req, res) => {
+  res.json({ items: wf.listShortedItems() });
+});
+
+router.post('/inventory/shorted-items/:itemCode/clear', requireRole('warehouse_manager', 'system_admin'), (req, res) => {
+  const result = wf.clearShortedItem(req.params.itemCode);
+  res.json({ ok: true, ...result });
+});
+
 // אותם חוסרים, מקובצים לפי ספק במקום לפי פריט - למחלקת רכש (ר' ייעוץ 16.9.2026,
 // נושא 5). פריט בלי ספק ידוע (עדיין לא סונכרן/לא משוייך ב-Sigma) מקובץ תחת
 // supplier_id=null בנפרד, כדי שלא "ייעלם" מהתצוגה.
