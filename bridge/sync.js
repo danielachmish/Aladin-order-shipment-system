@@ -39,8 +39,26 @@ const companyId = Number(process.env.SIGMA_COMPANY_ID || 3);
 // (רשימה מופרדת בפסיקים, למשל "0,99") — ריק = כל הסדרות.
 const sidraFilter = (process.env.SIGMA_SIDRAS || '').trim();
 const allowedSidras = sidraFilter ? sidraFilter.split(',').map((s) => Number(s.trim())) : null;
-const targetUrl = process.env.BRIDGE_TARGET_URL;
+// אפשר לדחוף ליותר מיעד אחד בו-זמנית (למשל גם Render וגם Cloudways) — רשימה
+// מופרדת בפסיקים ב-BRIDGE_TARGET_URL. כל יעד יכול להיות כתובת REST רגילה
+// (.../api/admin/sigma-sync) או כתובת עם ה-PHP-shim של Cloudways
+// (.../api.php?_p=%2Fadmin%2Fsigma-sync) — ר' frontend/src/api.js ו-backend/src/server.js.
+// אם יעד כלשהו נכשל (למשל SIGMA_BRIDGE_SECRET לא מוגדר שם עדיין), שאר היעדים
+// ממשיכים להסתנכרן כרגיל — הכשלים מתועדים בנפרד לכל יעד.
+const targetUrls = (process.env.BRIDGE_TARGET_URL || '').split(',').map((s) => s.trim()).filter(Boolean);
 const bridgeSecret = process.env.SIGMA_BRIDGE_SECRET;
+
+// בונה את כתובת ה-endpoint האחות (pending/reconcile/וכו') מתוך כתובת הבסיס,
+// גם כשהבסיס עצמו עטוף ב-PHP-shim (Cloudways) שבו הנתיב האמיתי חבוי בפרמטר _p.
+function endpointUrl(baseUrl, suffix) {
+  const u = new URL(baseUrl);
+  const p = u.searchParams.get('_p');
+  if (p !== null) {
+    u.searchParams.set('_p', p.replace(/\/sigma-sync$/, `/sigma-sync${suffix}`));
+    return u.toString();
+  }
+  return baseUrl.replace(/\/sigma-sync$/, `/sigma-sync${suffix}`);
+}
 const intervalMs = Number(process.env.SYNC_INTERVAL_MS || 45000);
 
 // שעות פעילות: מסתנכרן רק בין השעות האלה (שעון המחשב המקומי — השרת הפיזי
@@ -59,7 +77,7 @@ function log(...args) {
   console.log(new Date().toISOString(), ...args);
 }
 
-if (!cfg.server || !targetUrl || !bridgeSecret) {
+if (!cfg.server || targetUrls.length === 0 || !bridgeSecret) {
   log('חסרים משתני סביבה חובה (SIGMA_SQL_SERVER / BRIDGE_TARGET_URL / SIGMA_BRIDGE_SECRET). ר\' .env.example');
   process.exit(1);
 }
@@ -199,8 +217,8 @@ async function fetchPendingOrders() {
   }));
 }
 
-async function pushPending(orders) {
-  const res = await fetch(targetUrl.replace(/\/sigma-sync$/, '/sigma-sync/pending'), {
+async function pushPending(targetUrl, orders) {
+  const res = await fetch(endpointUrl(targetUrl, '/pending'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${bridgeSecret}` },
     body: JSON.stringify({ orders }),
@@ -209,7 +227,7 @@ async function pushPending(orders) {
   return res.json();
 }
 
-async function reconcilePending(orders, knownSidras) {
+async function reconcilePending(targetUrl, orders, knownSidras) {
   const bySidra = new Map();
   for (const o of orders) {
     if (!bySidra.has(o.sidra)) bySidra.set(o.sidra, []);
@@ -218,7 +236,7 @@ async function reconcilePending(orders, knownSidras) {
   for (const s of knownSidras || []) {
     if (!bySidra.has(s)) bySidra.set(s, []);
   }
-  const url = targetUrl.replace(/\/sigma-sync$/, '/sigma-sync/pending/reconcile');
+  const url = endpointUrl(targetUrl, '/pending/reconcile');
   let totalChecked = 0, totalRemoved = 0;
   for (const [s, validOrderNums] of bySidra) {
     const res = await fetch(url, {
@@ -236,7 +254,7 @@ async function reconcilePending(orders, knownSidras) {
 
 const BATCH_SIZE = 50; // דוחפים בחבילות קטנות כדי לא לחרוג ממגבלת גודל בקשה
 
-async function pushBatch(orders) {
+async function pushBatch(targetUrl, orders) {
   const res = await fetch(targetUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${bridgeSecret}` },
@@ -246,12 +264,12 @@ async function pushBatch(orders) {
   return res.json();
 }
 
-async function pushOrders(orders) {
+async function pushOrders(targetUrl, orders) {
   if (orders.length === 0) return { received: 0, created: 0, updated: 0 };
   let created = 0, updated = 0;
   for (let i = 0; i < orders.length; i += BATCH_SIZE) {
     const batch = orders.slice(i, i + BATCH_SIZE);
-    const result = await pushBatch(batch);
+    const result = await pushBatch(targetUrl, batch);
     created += result.created || 0;
     updated += result.updated || 0;
   }
@@ -262,8 +280,7 @@ async function pushOrders(orders) {
 // (למשל שורשרו במלואה לחשבונית, בוטלו, או חזרו סטטוס). לא נוגע בהזמנות בעבודה.
 // מאז שביטלנו סינון sidra יחיד, ה-orders עשויים להשתייך למספר סדרות — מריצים
 // ניקוי בנפרד לכל סדרה (אחרת "מנקים" בטעות הזמנות מסדרה שלא סונכרנה בכלל בסבב הזה).
-const reconcileUrl = targetUrl.replace(/\/sigma-sync$/, '/sigma-sync/reconcile');
-async function reconcile(orders, knownSidras) {
+async function reconcile(targetUrl, orders, knownSidras) {
   const bySidra = new Map();
   for (const o of orders) {
     if (!bySidra.has(o.sidra)) bySidra.set(o.sidra, []);
@@ -275,6 +292,7 @@ async function reconcile(orders, knownSidras) {
     if (!bySidra.has(s)) bySidra.set(s, []);
   }
 
+  const reconcileUrl = endpointUrl(targetUrl, '/reconcile');
   let totalChecked = 0, totalClosed = 0;
   for (const [s, validOrderNums] of bySidra) {
     const res = await fetch(reconcileUrl, {
@@ -290,6 +308,19 @@ async function reconcile(orders, knownSidras) {
   return { checked: totalChecked, closed: totalClosed };
 }
 
+// דוחף סבב שלם (הזמנות פעילות + ממתינות + ניקוי) ליעד בודד. יעדים שונים
+// נכשלים/מצליחים בנפרד זה מזה, כך שיעד אחד שעדיין לא מוגדר נכון (למשל
+// SIGMA_BRIDGE_SECRET חסר שם) לא עוצר את הסנכרון ליעדים האחרים.
+async function tickTarget(targetUrl, orders, knownSidras, pending) {
+  const result = await pushOrders(targetUrl, orders);
+  const recon = await reconcile(targetUrl, orders, knownSidras);
+  log(`[${targetUrl}] סונכרנו ${orders.length} הזמנות (סדרות: ${knownSidras.join(',')}) ->`, result, `| ניקוי: ${recon.closed} נסגרו מתוך ${recon.checked} שנבדקו`);
+
+  const pendingResult = await pushPending(targetUrl, pending);
+  const pendingRecon = await reconcilePending(targetUrl, pending, knownSidras);
+  log(`[${targetUrl}] ממתינות לאישור: ${pending.length} ->`, pendingResult, `| ניקוי: ${pendingRecon.removed} הוסרו מתוך ${pendingRecon.checked} שנבדקו`);
+}
+
 async function tick() {
   const active = isInActiveWindow();
   if (active !== wasInActiveWindow) {
@@ -302,20 +333,19 @@ async function tick() {
 
   try {
     const { orders, knownSidras } = await fetchOpenOrders();
-    const result = await pushOrders(orders);
-    const recon = await reconcile(orders, knownSidras);
-    log(`סונכרנו ${orders.length} הזמנות (סדרות: ${knownSidras.join(',')}) ->`, result, `| ניקוי: ${recon.closed} נסגרו מתוך ${recon.checked} שנבדקו`);
-
     const pending = await fetchPendingOrders();
-    const pendingResult = await pushPending(pending);
-    const pendingRecon = await reconcilePending(pending, knownSidras);
-    log(`ממתינות לאישור: ${pending.length} ->`, pendingResult, `| ניקוי: ${pendingRecon.removed} הוסרו מתוך ${pendingRecon.checked} שנבדקו`);
+    const results = await Promise.allSettled(
+      targetUrls.map((url) => tickTarget(url, orders, knownSidras, pending))
+    );
+    results.forEach((r, i) => {
+      if (r.status === 'rejected') log(`[${targetUrls[i]}] שגיאת סנכרון:`, r.reason.message);
+    });
   } catch (e) {
-    log('שגיאת סנכרון:', e.message);
+    log('שגיאת שליפה מ-Sigma:', e.message);
   }
 }
 
 const serverDesc = instanceName ? `${cfg.server}\\${instanceName}` : `${cfg.server}:${cfg.port}`;
-log(`Sigma Bridge מקומי מתחיל. שרת SQL: ${serverDesc}/${cfg.database}. יעד: ${targetUrl}. כל ${intervalMs / 1000} שניות, בין השעות ${activeHourStart}:00–${activeHourEnd}:00.`);
+log(`Sigma Bridge מקומי מתחיל. שרת SQL: ${serverDesc}/${cfg.database}. יעדים: ${targetUrls.join(', ')}. כל ${intervalMs / 1000} שניות, בין השעות ${activeHourStart}:00–${activeHourEnd}:00.`);
 tick();
 setInterval(tick, intervalMs);

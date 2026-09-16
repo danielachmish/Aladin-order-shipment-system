@@ -17,10 +17,29 @@
    - `SIGMA_SQL_SERVER` / `SIGMA_SQL_DATABASE` / `SIGMA_SQL_USER` / `SIGMA_SQL_PASSWORD` —
      פרטי החיבור המקומיים ל-SQL Server (משתמש עם הרשאת **קריאה בלבד**).
    - `SIGMA_BRIDGE_SECRET` — מחרוזת אקראית ארוכה שתמציא (למשל 32 תווים אקראיים).
-     **חשוב:** את אותו הערך בדיוק צריך גם להגדיר ב-Render, במשתני הסביבה של
-     השירות `aladin-backend` (Render Dashboard → aladin-backend → Environment →
-     הוסף `SIGMA_BRIDGE_SECRET`).
-   - `BRIDGE_TARGET_URL` — כבר ממולא נכון לכתובת ה-backend הנוכחית.
+     **חשוב:** את אותו הערך בדיוק צריך גם להגדיר בכל יעד שמוגדר ב-`BRIDGE_TARGET_URL`
+     למטה (Render Dashboard → aladin-backend → Environment → הוסף `SIGMA_BRIDGE_SECRET`;
+     ובשרת Cloudways — בקובץ `backend/.env` שם, ר' פסקה הבאה).
+   - `BRIDGE_TARGET_URL` — כבר ממולא נכון לכתובת ה-backend הנוכחית. אפשר
+     לרשום כמה יעדים מופרדים בפסיק כדי לדחוף לכמה פריסות בבת אחת (למשל גם
+     Render וגם Cloudways) — ר' ההערות בתוך `.env.example`.
+
+### דחיפה גם לפריסת Cloudways (`orders.aladincorp.com`)
+
+פריסת Cloudways היא עותק **נפרד לגמרי** של ה-backend (מסד נתונים משלה,
+משתני סביבה משלה) — היא לא מקבלת אוטומטית את מה ש-Render מקבל. כדי שגם היא
+תראה הזמנות אמיתיות מסיגמא (ולא רק את 4 הזמנות הדמו המובנות):
+
+1. להוסיף את הכתובת שלה ל-`BRIDGE_TARGET_URL` כאן (מופרדת בפסיק מהכתובת
+   הקיימת של Render) — ר' דוגמה ב-`.env.example`. שימו לב שהכתובת שם עוברת
+   דרך ה-PHP-shim (`/api.php?_p=...`), לא נתיב `/api/` ישיר.
+2. על שרת ה-Cloudways עצמו: ליצור/לערוך את `backend/.env` (ליד `backend/src/`,
+   לא עולה ל-git) ולהגדיר בו `SIGMA_BRIDGE_SECRET` עם **אותו ערך בדיוק** שמוגדר
+   כאן — לרוב דרך SSH או ה-File Manager של Cloudways, ואז להפעיל מחדש את
+   תהליך ה-Node שם.
+3. אחרי הרסטארט, מסך "כלי ניהול" ב-`orders.aladincorp.com` יראה **Sigma: Bridge
+   מקומי מחובר** ברגע שיגיע סבב סנכרון ראשון (עד `SYNC_INTERVAL_MS`, ברירת
+   מחדל 45 שניות).
 
 ## בדיקה ראשונה (חובה לפני התקנה כשירות קבוע)
 
