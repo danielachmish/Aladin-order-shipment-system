@@ -35,6 +35,9 @@ export default function UserManagement() {
       if (changes.display_name !== undefined && changes.display_name !== u.display_name) payload.display_name = changes.display_name;
       if (changes.role !== undefined && changes.role !== u.role) payload.role = changes.role;
       if (changes.password) payload.password = changes.password;
+      if (changes.sigma_agent_id !== undefined && changes.sigma_agent_id !== (u.sigma_agent_id ?? '')) {
+        payload.sigma_agent_id = changes.sigma_agent_id === '' ? '' : Number(changes.sigma_agent_id);
+      }
       if (Object.keys(payload).length === 0) return;
       await api.updateUser(u.user_id, payload);
       setEditing((prev) => { const next = { ...prev }; delete next[u.user_id]; return next; });
@@ -117,6 +120,15 @@ export default function UserManagement() {
               onChange={(e) => setField(u, 'password', e.target.value)}
               style={{ minWidth: 180 }}
             />
+            {fieldFor(u, 'role') === 'agent' && (
+              <input
+                type="number"
+                placeholder="מזהה סוכן בסיגמא (t_agents.agent_ID)"
+                value={fieldFor(u, 'sigma_agent_id') ?? ''}
+                onChange={(e) => setField(u, 'sigma_agent_id', e.target.value)}
+                style={{ minWidth: 200 }}
+              />
+            )}
             <button className="btn-approve" disabled={busy} onClick={() => saveUser(u)}>שמירה</button>
             <button className={u.is_active ? 'btn-reject' : 'btn-approve'} disabled={busy} onClick={() => toggleActive(u)}>
               {u.is_active ? 'השבתה' : 'הפעלה מחדש'}

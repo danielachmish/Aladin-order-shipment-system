@@ -10,6 +10,7 @@ import Dashboard from './components/Dashboard.jsx';
 import ManagementTools from './pages/ManagementTools.jsx';
 import InventoryShortages from './pages/InventoryShortages.jsx';
 import BackInStock from './pages/BackInStock.jsx';
+import MyShortages from './pages/MyShortages.jsx';
 import { getToken, getUser, clearSession } from './api.js';
 import { roleLabel } from './labels.js';
 import { connectLive, onLive, isConnected } from './ws.js';
@@ -82,6 +83,7 @@ export default function App() {
     { key: 'shipments', icon: '🚚', label: 'משלוחים' },
     isManager && { key: 'inventory', icon: '📉', label: 'חוסרי מלאי' },
     isManager && { key: 'backinstock', icon: '🔄', label: 'חזר למלאי' },
+    user.role === 'agent' && { key: 'myshortages', icon: '📉', label: 'החוסרים שלי' },
     isManager && { key: 'management', icon: '🛠️', label: 'כלי ניהול' },
   ].filter(Boolean);
 
@@ -152,6 +154,8 @@ export default function App() {
             <InventoryShortages />
           ) : tab === 'backinstock' ? (
             <BackInStock />
+          ) : tab === 'myshortages' ? (
+            <MyShortages />
           ) : (
             <ManagementTools user={user} />
           )}

@@ -90,7 +90,8 @@ async function fetchOpenOrders() {
              h.FCreateDate AS [created_at],
              h.sum AS [total_amount],
              h.canceled AS [canceled],
-             ag.agent_name AS [agent_name]
+             ag.agent_name AS [agent_name],
+             h.agent_ID AS [sigma_agent_id]
       FROM azmana_index h
       LEFT JOIN maazni m ON m.CompanyID = h.CompanyID AND m.maazni_ID = h.maazni_ID
       LEFT JOIN t_agents ag ON ag.agent_ID = h.agent_ID
@@ -156,6 +157,7 @@ async function fetchOpenOrders() {
       companyId: h.CompanyID, sidra: h.sidra, orderNum: h.azmana_num,
       customerName: (h.customer_name || '').trim() || `לקוח ${h.azmana_num}`,
       agentName: (h.agent_name || '').trim() || null,
+      sigmaAgentId: h.sigma_agent_id || null, // t_agents.agent_ID אמיתי, ר' ייעוץ 17.9.2026 נושא 6
       orderDate: h.order_date, createdAt: h.created_at, deliveryDate: null,
       totalAmount: h.total_amount, notes: null,
       sourceStatus: h.canceled ? 'cancelled' : 'open',

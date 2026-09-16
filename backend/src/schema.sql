@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS users (
   password     TEXT NOT NULL, -- MOCK: טקסט גלוי לצורך דמו בלבד, לא לפרודקשן
   role         TEXT NOT NULL CHECK (role IN ('agent','warehouse','warehouse_manager','system_admin')),
   is_active    INTEGER NOT NULL DEFAULT 1,
+  sigma_agent_id INTEGER, -- מיפוי אמיתי לסוכן בסיגמא (t_agents.agent_ID), ר' ייעוץ 17.9.2026 נושא 6 — מחליף התאמה שברירית לפי שם
   created_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -24,6 +25,7 @@ CREATE TABLE IF NOT EXISTS orders_cache (
   notes         TEXT,
   source_status TEXT, -- מצב ב-Sigma, לקריאה בלבד
   sigma_agent_name TEXT, -- שם הסוכן האמיתי מ-Sigma (t_agents.agent_name), תצוגה בלבד
+  sigma_agent_id   INTEGER, -- t_agents.agent_ID האמיתי מסיגמא — משמש למיפוי אמין ל-workflow_state.agent_id (ר' ייעוץ 17.9.2026 נושא 6)
   sigma_created_at TEXT, -- FCreateDate מסיגמא (תאריך+שעה מדויקים), לסידור התור
   synced_at     TEXT NOT NULL DEFAULT (datetime('now'))
 );

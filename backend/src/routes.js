@@ -695,6 +695,38 @@ router.post('/inventory/shorted-items/:itemCode/clear', requireRole('warehouse_m
   res.json({ ok: true, ...result });
 });
 
+// חוסרים של הסוכן המחובר בלבד (ר' ייעוץ 17.9.2026, נושא 6) — לא נותנים לסוכן
+// לראות הזמנות של סוכנים אחרים. לפי agent_id אמיתי (users.sigma_agent_id
+// שמסונכרן מ-Sigma) עם נפילה חזרה להתאמת שם, כמו ב-GET /orders.
+router.get('/inventory/my-shortages', requireRole('agent'), (req, res) => {
+  const days = Number(req.query.days) > 0 ? Number(req.query.days) : 1;
+  const rows = db.prepare(`
+    SELECT oic.order_key, oic.item_code, oic.item_name, oic.quantity, oic.qty_picked, oic.pick_status,
+           oc.order_num, oc.customer_name
+    FROM order_items_cache oic
+    JOIN orders_cache oc ON oc.order_key = oic.order_key
+    JOIN workflow_state ws ON ws.order_key = oic.order_key
+    WHERE oic.pick_status IN ('missing', 'partial')
+      AND oic.pick_marked_at >= datetime('now', ?)
+      AND (ws.agent_id = ? OR TRIM(oc.sigma_agent_name) = TRIM(?))
+    ORDER BY oic.pick_marked_at DESC
+  `).all(`-${days} days`, req.user.id, req.user.name);
+
+  const byItem = new Map();
+  for (const r of rows) {
+    const missingQty = r.pick_status === 'missing' ? r.quantity : Math.max(0, (r.quantity || 0) - (r.qty_picked || 0));
+    if (missingQty <= 0) continue;
+    if (!byItem.has(r.item_code)) {
+      byItem.set(r.item_code, { item_code: r.item_code, item_name: r.item_name, total_missing: 0, orders: [] });
+    }
+    const entry = byItem.get(r.item_code);
+    entry.total_missing += missingQty;
+    entry.orders.push({ order_key: r.order_key, order_num: r.order_num, customer_name: r.customer_name, missing_qty: missingQty });
+  }
+  const items = Array.from(byItem.values()).sort((a, b) => b.total_missing - a.total_missing);
+  res.json({ items, days });
+});
+
 // אותם חוסרים, מקובצים לפי ספק במקום לפי פריט - למחלקת רכש (ר' ייעוץ 16.9.2026,
 // נושא 5). פריט בלי ספק ידוע (עדיין לא סונכרן/לא משוייך ב-Sigma) מקובץ תחת
 // supplier_id=null בנפרד, כדי שלא "ייעלם" מהתצוגה.
@@ -839,7 +871,7 @@ router.post('/admin/sigma-test/:companyId/:sidra/:num', requireRole('system_admi
 const VALID_ROLES = ['agent', 'warehouse', 'warehouse_manager', 'system_admin'];
 
 router.get('/users', requireRole('warehouse_manager', 'system_admin'), (req, res) => {
-  const rows = db.prepare(`SELECT user_id, username, display_name, role, is_active, created_at FROM users ORDER BY created_at ASC`).all();
+  const rows = db.prepare(`SELECT user_id, username, display_name, role, is_active, sigma_agent_id, created_at FROM users ORDER BY created_at ASC`).all();
   res.json({ users: rows });
 });
 
@@ -865,19 +897,29 @@ router.put('/users/:id', requireRole('warehouse_manager', 'system_admin'), (req,
   const existing = db.prepare('SELECT * FROM users WHERE user_id = ?').get(id);
   if (!existing) return res.status(404).json({ error: 'משתמש לא נמצא' });
 
-  const { display_name, password, role, is_active } = req.body || {};
+  const { display_name, password, role, is_active, sigma_agent_id } = req.body || {};
   if (role && !VALID_ROLES.includes(role)) return res.status(400).json({ error: 'תפקיד לא תקין' });
 
-  db.prepare(`
-    UPDATE users SET
-      display_name = COALESCE(?, display_name),
-      password = COALESCE(?, password),
-      role = COALESCE(?, role),
-      is_active = COALESCE(?, is_active)
-    WHERE user_id = ?
-  `).run(display_name || null, password || null, role || null, is_active === undefined ? null : (is_active ? 1 : 0), id);
+  try {
+    db.prepare(`
+      UPDATE users SET
+        display_name = COALESCE(?, display_name),
+        password = COALESCE(?, password),
+        role = COALESCE(?, role),
+        is_active = COALESCE(?, is_active),
+        sigma_agent_id = CASE WHEN ? THEN ? ELSE sigma_agent_id END
+      WHERE user_id = ?
+    `).run(
+      display_name || null, password || null, role || null,
+      is_active === undefined ? null : (is_active ? 1 : 0),
+      sigma_agent_id !== undefined ? 1 : 0, sigma_agent_id === '' ? null : (sigma_agent_id ?? null),
+      id
+    );
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
 
-  const updated = db.prepare(`SELECT user_id, username, display_name, role, is_active, created_at FROM users WHERE user_id = ?`).get(id);
+  const updated = db.prepare(`SELECT user_id, username, display_name, role, is_active, sigma_agent_id, created_at FROM users WHERE user_id = ?`).get(id);
   res.json({ ok: true, user: updated });
 });
 

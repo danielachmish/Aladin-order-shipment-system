@@ -102,6 +102,10 @@ export const api = {
     const qs = new URLSearchParams(params).toString();
     return request('/inventory/shortages-by-supplier' + (qs ? `?${qs}` : ''));
   },
+  myShortages: (params = {}) => {
+    const qs = new URLSearchParams(params).toString();
+    return request('/inventory/my-shortages' + (qs ? `?${qs}` : ''));
+  },
   shortedItems: () => request('/inventory/shorted-items'),
   clearShortedItem: (itemCode) => request(`/inventory/shorted-items/${encodeURIComponent(itemCode)}/clear`, { method: 'POST' }),
 

@@ -17,19 +17,24 @@ function orderKey(companyId, sidra, num) {
 }
 
 // order: { companyId, sidra, orderNum, customerName, orderDate, deliveryDate,
-//          totalAmount, notes, sourceStatus, agentName, items: [{lineNo,itemCode,itemName,quantity,price,location,barcode}] }
+//          totalAmount, notes, sourceStatus, agentName, sigmaAgentId,
+//          items: [{lineNo,itemCode,itemName,quantity,price,location,barcode}] }
 function ingestOrders(orders) {
   const insertOrder = db.prepare(`
-    INSERT INTO orders_cache (order_key, company_id, sidra, order_num, customer_name, order_date, delivery_date, total_amount, line_count, notes, source_status, sigma_agent_name, sigma_created_at, synced_at)
-    VALUES (@order_key, @company_id, @sidra, @order_num, @customer_name, @order_date, @delivery_date, @total_amount, @line_count, @notes, @source_status, @sigma_agent_name, @sigma_created_at, datetime('now'))
+    INSERT INTO orders_cache (order_key, company_id, sidra, order_num, customer_name, order_date, delivery_date, total_amount, line_count, notes, source_status, sigma_agent_name, sigma_agent_id, sigma_created_at, synced_at)
+    VALUES (@order_key, @company_id, @sidra, @order_num, @customer_name, @order_date, @delivery_date, @total_amount, @line_count, @notes, @source_status, @sigma_agent_name, @sigma_agent_id, @sigma_created_at, datetime('now'))
     ON CONFLICT(order_key) DO UPDATE SET
       customer_name = excluded.customer_name, order_date = excluded.order_date,
       delivery_date = excluded.delivery_date, total_amount = excluded.total_amount,
       line_count = excluded.line_count, notes = excluded.notes,
       source_status = excluded.source_status, sigma_agent_name = excluded.sigma_agent_name,
+      sigma_agent_id = excluded.sigma_agent_id,
       sigma_created_at = excluded.sigma_created_at,
       synced_at = datetime('now')
   `);
+  // מיפוי אמיתי סוכן->יוזר (ר' ייעוץ 17.9.2026, נושא 6) — מוגדר ע"י מנהל
+  // ב-UserManagement (users.sigma_agent_id). מוחלף על פני התאמת שם שברירית.
+  const findAgentUser = db.prepare('SELECT user_id FROM users WHERE sigma_agent_id = ?');
   // תיקון קריטי (14.9.2026): "INSERT OR REPLACE" היה מוחק בכל סבב סנכרון (כל
   // 45 שניות) את כל התקדמות הליקוט/בדיקה של השורה (qty_picked, pick_status,
   // checked, check_note) — כי סיגמא לא יודעת שההזמנה בליקוט אצלנו, וממשיכה
@@ -43,10 +48,16 @@ function ingestOrders(orders) {
       quantity = excluded.quantity, price = excluded.price,
       location = excluded.location, barcode = excluded.barcode
   `);
-  // "הזמנה חדשה נכנסת מיד לתור" (סעיף 6.1.4) — רק אם עוד אין לה מצב עבודה
+  // "הזמנה חדשה נכנסת מיד לתור" (סעיף 6.1.4) — רק אם עוד אין לה מצב עבודה.
+  // agent_id מוזן כבר כאן אם יש מיפוי ידוע — לא מסתמכים על התאמת שם בזמן ריצה.
   const insertWorkflowIfNew = db.prepare(`
-    INSERT OR IGNORE INTO workflow_state (order_key, status, priority, queue_entered_at)
-    VALUES (?, 'waiting_pick', 'normal', datetime('now'))
+    INSERT OR IGNORE INTO workflow_state (order_key, status, priority, queue_entered_at, agent_id)
+    VALUES (?, 'waiting_pick', 'normal', datetime('now'), ?)
+  `);
+  // גיבוי: אם ההזמנה כבר הייתה קיימת בלי agent_id (למשל המיפוי נוסף אחרי
+  // שההזמנה כבר נכנסה), נמלא אותו בדיעבד ברגע שהוא הופך זמין.
+  const backfillAgentId = db.prepare(`
+    UPDATE workflow_state SET agent_id = ? WHERE order_key = ? AND agent_id IS NULL
   `);
 
   let created = 0, updated = 0;
@@ -54,12 +65,14 @@ function ingestOrders(orders) {
     for (const o of list) {
       const key = orderKey(o.companyId, o.sidra, o.orderNum);
       const existed = db.prepare('SELECT 1 FROM orders_cache WHERE order_key = ?').get(key);
+      const agentUserId = o.sigmaAgentId ? (findAgentUser.get(o.sigmaAgentId) || {}).user_id || null : null;
       insertOrder.run({
         order_key: key, company_id: o.companyId, sidra: o.sidra, order_num: o.orderNum,
         customer_name: o.customerName, order_date: o.orderDate || null, delivery_date: o.deliveryDate || null,
         total_amount: o.totalAmount || null, line_count: (o.items || []).length,
         notes: o.notes || null, source_status: o.sourceStatus || 'open',
         sigma_agent_name: o.agentName || null,
+        sigma_agent_id: o.sigmaAgentId || null,
         sigma_created_at: o.createdAt || null,
       });
       const currentLineNos = new Set();
@@ -82,7 +95,8 @@ function ingestOrders(orders) {
           removedLines++;
         }
       }
-      const wf = insertWorkflowIfNew.run(key);
+      const wf = insertWorkflowIfNew.run(key, agentUserId);
+      if (agentUserId) backfillAgentId.run(agentUserId, key);
       existed ? updated++ : created++;
       if (wf.changes > 0) emitChange('order', { order_key: key, status: 'waiting_pick', version: 1 });
       else if (removedLines > 0) emitChange('order', { order_key: key });

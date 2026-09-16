@@ -44,5 +44,7 @@ ensureColumn('workflow_state', 'cod_due_date', 'TEXT');
 ensureColumn('workflow_state', 'cod_set_by', 'TEXT');
 ensureColumn('workflow_state', 'cod_set_at', 'TEXT');
 ensureColumn('order_items_cache', 'auto_missing', 'INTEGER NOT NULL DEFAULT 0');
+ensureColumn('users', 'sigma_agent_id', 'INTEGER');
+ensureColumn('orders_cache', 'sigma_agent_id', 'INTEGER');
 
 module.exports = { db, isNew };
