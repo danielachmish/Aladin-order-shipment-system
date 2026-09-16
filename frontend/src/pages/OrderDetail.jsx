@@ -91,8 +91,11 @@ export default function OrderDetail({ user, orderKey, onBack }) {
       await fn();
       await load();
     } catch (e) {
-      setError(e.message);
+      // תיקון (17.9.2026, נתפס ע"י בדיקת E2E): load() בהצלחה מנקה את השגיאה
+      // (setError('') בפנים) — לכן חייבים לרענן קודם ורק אז להציג את השגיאה,
+      // אחרת הודעת השגיאה "מהבהבת" ונעלמת כמעט מיד לפני שהמשתמש מספיק לקרוא אותה.
       await load();
+      setError(e.message);
     } finally {
       setBusy(false);
     }
@@ -117,8 +120,8 @@ export default function OrderDetail({ user, orderKey, onBack }) {
         );
       }
     } catch (e) {
+      await load(); // ר' הערה ב-act() — סדר הפוך כדי שהשגיאה לא תימחק
       setError(e.message);
-      await load();
     } finally {
       setBusy(false);
     }

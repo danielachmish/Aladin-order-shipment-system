@@ -1,0 +1,13 @@
+{
+  "name": "aladin-e2e",
+  "version": "1.0.0",
+  "private": true,
+  "description": "בדיקות E2E מקצה-לקצה נגד frontend+backend אמיתיים (Playwright) - ר' ייעוץ 16-17.9.2026, נושא 8. רצות מול DB_PATH זמני נפרד, לא נוגעות ב-aladin.db האמיתי של הפיתוח.",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.0"
+  }
+}
