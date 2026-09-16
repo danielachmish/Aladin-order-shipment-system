@@ -7,15 +7,22 @@ import { onLive } from '../ws.js';
 // כדי להזמין/לטפל מול ספק. ר' PICKING_QC_SPEC.md סעיף 12 (בקשת דניאל 14.9.2026).
 export default function InventoryShortages() {
   const [days, setDays] = useState(1);
+  const [view, setView] = useState('item'); // 'item' | 'supplier' — לרכש (ר' ייעוץ 16.9.2026)
   const [items, setItems] = useState([]);
+  const [suppliers, setSuppliers] = useState([]);
   const [expanded, setExpanded] = useState(null);
   const [loading, setLoading] = useState(true);
 
   async function load() {
     setLoading(true);
     try {
-      const data = await api.inventoryShortages({ days });
-      setItems(data.items);
+      if (view === 'supplier') {
+        const data = await api.inventoryShortagesBySupplier({ days });
+        setSuppliers(data.suppliers);
+      } else {
+        const data = await api.inventoryShortages({ days });
+        setItems(data.items);
+      }
     } finally {
       setLoading(false);
     }
@@ -26,7 +33,7 @@ export default function InventoryShortages() {
     const off = onLive((evt) => { if (evt.type === 'order') load(); });
     return off;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [days]);
+  }, [days, view]);
 
   // שיתוף בווצאפ — בקשת דניאל 14.9.2026: "לתת ללקוחות שירות פרימיום" כשמוצר
   // שחסר להם חוזר למלאי. אין לנו טלפון של הלקוח שמור במערכת, אז פותחים את
@@ -50,7 +57,44 @@ export default function InventoryShortages() {
         </div>
       </div>
 
+      <div className="toggle-row">
+        <span>תצוגה:</span>
+        <div className="toggle">
+          <button className={view === 'item' ? 'active' : ''} onClick={() => setView('item')}>לפי מוצר</button>
+          <button className={view === 'supplier' ? 'active' : ''} onClick={() => setView('supplier')}>לפי ספק</button>
+        </div>
+      </div>
+
       {loading && <div className="empty-state">טוען...</div>}
+
+      {view === 'supplier' ? (
+        <>
+          {!loading && suppliers.length === 0 && <div className="empty-state">אין חוסרי מלאי בטווח הזה 🎉</div>}
+          <div className="list-grid">
+            {suppliers.map((s) => (
+              <div className="admin-list-item" key={s.supplier_id ?? 'unknown'}>
+                <div className="top">
+                  <b>{s.supplier_name}</b>
+                  <span className="badge status-on_hold">{s.items.length} מוצרים</span>
+                </div>
+                <table className="agent-table">
+                  <thead><tr><th>מק"ט</th><th>שם</th><th>כמות חסרה</th></tr></thead>
+                  <tbody>
+                    {s.items.map((it) => (
+                      <tr key={it.item_code}>
+                        <td>{it.item_code}</td>
+                        <td>{it.item_name}</td>
+                        <td>{it.total_missing}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ))}
+          </div>
+        </>
+      ) : (
+      <>
       {!loading && items.length === 0 && <div className="empty-state">אין חוסרי מלאי בטווח הזה 🎉</div>}
 
       <div className="list-grid">
@@ -60,7 +104,10 @@ export default function InventoryShortages() {
               <b>{it.item_name}</b>
               <span className="badge status-on_hold">חסר {it.total_missing}</span>
             </div>
-            <div className="meta">מק"ט {it.item_code} · ב-{it.orders.length} הזמנות</div>
+            <div className="meta">
+              מק"ט {it.item_code} · ב-{it.orders.length} הזמנות
+              {it.supplier_name && <> · ספק: {it.supplier_name}</>}
+            </div>
             {expanded === it.item_code && (
               <div className="shortage-table-wrap">
                 <table className="agent-table">
@@ -84,6 +131,8 @@ export default function InventoryShortages() {
           </div>
         ))}
       </div>
+      </>
+      )}
     </div>
   );
 }

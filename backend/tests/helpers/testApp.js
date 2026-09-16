@@ -40,7 +40,7 @@ function resetDb(db) {
   const tables = [
     'workflow_events', 'order_items_cache', 'workflow_state', 'orders_cache',
     'pending_orders_cache', 'urgent_requests', 'shipments', 'order_shipments',
-    'shipment_events', 'link_exceptions', 'sync_runs', 'audit_log', 'settings', 'users',
+    'shipment_events', 'link_exceptions', 'sync_runs', 'audit_log', 'settings', 'item_suppliers', 'users',
   ];
   for (const t of tables) db.prepare(`DELETE FROM ${t}`).run();
 }

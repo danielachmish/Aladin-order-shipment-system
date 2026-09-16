@@ -231,7 +231,29 @@ function reconcilePendingOrders(companyId, sidra, validOrderNums) {
   return { checked: rows.length, removed };
 }
 
+// מיפוי פריט->ספק (ר' ייעוץ 16.9.2026, נושא 5 "חוסרים לפי ספק") - קטלוג
+// שמשתנה לאט, מוחלף במלואו בכל סבב (בניגוד להזמנות, אין כאן claim/סטטוס
+// עבודה לשמר). items: [{ itemCode, supplierId, supplierName }]
+function ingestItemSuppliers(items) {
+  const upsert = db.prepare(`
+    INSERT INTO item_suppliers (item_code, supplier_id, supplier_name, synced_at)
+    VALUES (?, ?, ?, datetime('now'))
+    ON CONFLICT(item_code) DO UPDATE SET
+      supplier_id = excluded.supplier_id, supplier_name = excluded.supplier_name,
+      synced_at = datetime('now')
+  `);
+  const tx = db.transaction((list) => {
+    for (const it of list) {
+      if (!it.itemCode || !it.supplierId) continue;
+      upsert.run(String(it.itemCode), it.supplierId, it.supplierName || null);
+    }
+  });
+  tx(items);
+  return { received: items.length };
+}
+
 module.exports = {
   ingestOrders, reconcileOpenOrders, undoRecentSyncClosures,
   ingestPendingOrders, reconcilePendingOrders, orderKey,
+  ingestItemSuppliers,
 };

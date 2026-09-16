@@ -97,6 +97,10 @@ export const api = {
     const qs = new URLSearchParams(params).toString();
     return request('/inventory/shortages' + (qs ? `?${qs}` : ''));
   },
+  inventoryShortagesBySupplier: (params = {}) => {
+    const qs = new URLSearchParams(params).toString();
+    return request('/inventory/shortages-by-supplier' + (qs ? `?${qs}` : ''));
+  },
 
   dashboard: () => request('/dashboard'),
   pendingOrders: () => request('/pending-orders'),

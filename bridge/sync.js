@@ -290,6 +290,48 @@ async function reconcile(orders, knownSidras) {
   return { checked: totalChecked, closed: totalClosed };
 }
 
+// מיפוי פריט->ספק (ר' ייעוץ 16.9.2026, נושא 5 "חוסרים לפי ספק"; אומת ידנית
+// מול פריט 106013 -> maazni_ID 800504 "אנביטק גרופ בע״מ"). קטלוג שמשתנה לאט —
+// מסתנכרן בנפרד מהזמנות, על מרווח זמן משלו (SUPPLIER_SYNC_INTERVAL_MS), לא
+// בכל tick של הזמנות.
+const supplierSyncIntervalMs = Number(process.env.SUPPLIER_SYNC_INTERVAL_MS || 6 * 60 * 60 * 1000); // 6 שעות
+
+async function fetchItemSuppliers() {
+  const p = await getPool();
+  const rows = await p.request()
+    .input('companyId', sql.Int, companyId)
+    .query(`
+      SELECT pr.prit_code AS [itemCode], pr.FLinkToMaazni AS [supplierId], m.name AS [supplierName]
+      FROM pritim pr
+      JOIN maazni m ON m.CompanyID = pr.CompanyID AND m.maazni_ID = pr.FLinkToMaazni
+      WHERE pr.CompanyID = @companyId AND pr.FLinkToMaazni IS NOT NULL AND pr.FLinkToMaazni <> 0
+    `);
+  return rows.recordset.map((r) => ({
+    itemCode: r.itemCode, supplierId: r.supplierId, supplierName: (r.supplierName || '').trim() || null,
+  }));
+}
+
+const supplierSyncUrl = targetUrl.replace(/\/sigma-sync$/, '/sigma-sync/suppliers');
+async function pushItemSuppliers(items) {
+  const res = await fetch(supplierSyncUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${bridgeSecret}` },
+    body: JSON.stringify({ items }),
+  });
+  if (!res.ok) throw new Error(`דחיפת ספקים נכשלה: ${res.status} ${await res.text()}`);
+  return res.json();
+}
+
+async function supplierTick() {
+  try {
+    const items = await fetchItemSuppliers();
+    const result = await pushItemSuppliers(items);
+    log(`מיפוי ספקים: ${items.length} פריטים משוייכים ->`, result);
+  } catch (e) {
+    log('שגיאת סנכרון ספקים:', e.message);
+  }
+}
+
 async function tick() {
   const active = isInActiveWindow();
   if (active !== wasInActiveWindow) {
@@ -319,3 +361,7 @@ const serverDesc = instanceName ? `${cfg.server}\\${instanceName}` : `${cfg.serv
 log(`Sigma Bridge מקומי מתחיל. שרת SQL: ${serverDesc}/${cfg.database}. יעד: ${targetUrl}. כל ${intervalMs / 1000} שניות, בין השעות ${activeHourStart}:00–${activeHourEnd}:00.`);
 tick();
 setInterval(tick, intervalMs);
+
+log(`מיפוי ספקים (pritim/maazni) יסתנכרן כל ${supplierSyncIntervalMs / 1000 / 60} דקות, לא כפוף לשעות פעילות (קטלוג, לא תור עבודה).`);
+supplierTick();
+setInterval(supplierTick, supplierSyncIntervalMs);

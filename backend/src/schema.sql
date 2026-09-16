@@ -167,3 +167,13 @@ CREATE TABLE IF NOT EXISTS settings (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
+
+-- מיפוי פריט -> ספק, מסונכרן מ-Sigma (pritim.FLinkToMaazni -> maazni.name,
+-- מאומת ידנית מול הזמנה אמיתית 106013 בייעוץ 16.9.2026). קטלוג שמשתנה לאט —
+-- מסונכרן בנפרד מהזמנות, לא בכל סבב (ר' bridge/sync.js syncSuppliersOnce).
+CREATE TABLE IF NOT EXISTS item_suppliers (
+  item_code     TEXT PRIMARY KEY,
+  supplier_id   INTEGER,
+  supplier_name TEXT,
+  synced_at     TEXT NOT NULL DEFAULT (datetime('now'))
+);

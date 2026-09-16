@@ -188,6 +188,27 @@ router.post('/admin/sigma-sync/undo-closures', express.json({ limit: '1mb' }), (
   }
 });
 
+// מיפוי פריט->ספק (ר' ייעוץ 16.9.2026, נושא 5) - נדחף בנפרד מהזמנות, בקצב
+// איטי יותר (קטלוג, לא תור עבודה). אותו דפוס אימות כמו שאר ה-Sigma Bridge.
+router.post('/admin/sigma-sync/suppliers', express.json({ limit: '10mb' }), (req, res) => {
+  if (!sigmaCfg.bridgeSecret) {
+    return res.status(400).json({ error: 'SIGMA_BRIDGE_SECRET לא מוגדר בשרת' });
+  }
+  const header = req.headers.authorization || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+  if (token !== sigmaCfg.bridgeSecret) {
+    return res.status(401).json({ error: 'אימות Sigma Bridge נכשל' });
+  }
+  try {
+    const items = req.body?.items;
+    if (!Array.isArray(items)) return res.status(400).json({ error: 'שדה items חסר או לא מערך' });
+    const result = sigmaIngest.ingestItemSuppliers(items);
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 router.use(authMiddleware);
 
 // ---------- Settings ----------
@@ -625,12 +646,21 @@ router.get('/inventory/shortages', requireRole('warehouse_manager', 'system_admi
     ORDER BY oic.pick_marked_at DESC
   `).all(`-${days} days`);
 
+  const supplierByItem = new Map(
+    db.prepare('SELECT item_code, supplier_id, supplier_name FROM item_suppliers').all()
+      .map((s) => [s.item_code, s])
+  );
+
   const byItem = new Map();
   for (const r of rows) {
     const missingQty = r.pick_status === 'missing' ? r.quantity : Math.max(0, (r.quantity || 0) - (r.qty_picked || 0));
     if (missingQty <= 0) continue;
     if (!byItem.has(r.item_code)) {
-      byItem.set(r.item_code, { item_code: r.item_code, item_name: r.item_name, total_missing: 0, orders: [] });
+      const supplier = supplierByItem.get(r.item_code);
+      byItem.set(r.item_code, {
+        item_code: r.item_code, item_name: r.item_name, total_missing: 0, orders: [],
+        supplier_id: supplier?.supplier_id ?? null, supplier_name: supplier?.supplier_name ?? null,
+      });
     }
     const entry = byItem.get(r.item_code);
     entry.total_missing += missingQty;
@@ -641,6 +671,49 @@ router.get('/inventory/shortages', requireRole('warehouse_manager', 'system_admi
   }
   const items = Array.from(byItem.values()).sort((a, b) => b.total_missing - a.total_missing);
   res.json({ items, days });
+});
+
+// אותם חוסרים, מקובצים לפי ספק במקום לפי פריט - למחלקת רכש (ר' ייעוץ 16.9.2026,
+// נושא 5). פריט בלי ספק ידוע (עדיין לא סונכרן/לא משוייך ב-Sigma) מקובץ תחת
+// supplier_id=null בנפרד, כדי שלא "ייעלם" מהתצוגה.
+router.get('/inventory/shortages-by-supplier', requireRole('warehouse_manager', 'system_admin'), (req, res) => {
+  const days = Number(req.query.days) > 0 ? Number(req.query.days) : 1;
+  const rows = db.prepare(`
+    SELECT oic.item_code, oic.item_name, oic.quantity, oic.qty_picked, oic.pick_status
+    FROM order_items_cache oic
+    JOIN orders_cache oc ON oc.order_key = oic.order_key
+    WHERE oic.pick_status IN ('missing', 'partial')
+      AND oic.pick_marked_at >= datetime('now', ?)
+  `).all(`-${days} days`);
+
+  const supplierByItem = new Map(
+    db.prepare('SELECT item_code, supplier_id, supplier_name FROM item_suppliers').all()
+      .map((s) => [s.item_code, s])
+  );
+
+  const bySupplier = new Map(); // key: supplier_id ?? 'unknown'
+  for (const r of rows) {
+    const missingQty = r.pick_status === 'missing' ? r.quantity : Math.max(0, (r.quantity || 0) - (r.qty_picked || 0));
+    if (missingQty <= 0) continue;
+    const supplier = supplierByItem.get(r.item_code);
+    const key = supplier?.supplier_id ?? 'unknown';
+    if (!bySupplier.has(key)) {
+      bySupplier.set(key, {
+        supplier_id: supplier?.supplier_id ?? null, supplier_name: supplier?.supplier_name ?? 'ספק לא ידוע',
+        items: new Map(),
+      });
+    }
+    const group = bySupplier.get(key);
+    if (!group.items.has(r.item_code)) {
+      group.items.set(r.item_code, { item_code: r.item_code, item_name: r.item_name, total_missing: 0 });
+    }
+    group.items.get(r.item_code).total_missing += missingQty;
+  }
+
+  const suppliers = Array.from(bySupplier.values())
+    .map((g) => ({ ...g, items: Array.from(g.items.values()).sort((a, b) => b.total_missing - a.total_missing) }))
+    .sort((a, b) => (a.supplier_name || '').localeCompare(b.supplier_name || '', 'he'));
+  res.json({ suppliers, days });
 });
 
 // ---------- לשונית "משלוחים": כל מה שכבר נמסר בפועל ל-UPS, עם סטטוס עדכני ----------
