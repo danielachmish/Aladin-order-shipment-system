@@ -2,8 +2,10 @@ const path = require('path');
 const fs = require('fs');
 const Database = require('better-sqlite3');
 
-const DB_PATH = path.join(__dirname, '..', 'aladin.db');
-const isNew = !fs.existsSync(DB_PATH);
+// DB_PATH ניתן לדריסה (למשל ':memory:' או קובץ זמני) כדי לבודד ריצות בדיקות
+// מה-DB האמיתי של הפיתוח, בלי לשנות שום דבר בהתנהגות הרגילה בפרודקשן/dev.
+const DB_PATH = process.env.DB_PATH || path.join(__dirname, '..', 'aladin.db');
+const isNew = DB_PATH === ':memory:' || !fs.existsSync(DB_PATH);
 
 const db = new Database(DB_PATH);
 db.pragma('journal_mode = WAL');
