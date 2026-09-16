@@ -695,6 +695,36 @@ router.get('/admin/integrations-status', requireRole('warehouse_manager', 'syste
   });
 });
 
+// ---------- WooCommerce (אתר המכירות) — ר' ייעוץ 16.9.2026 ----------
+// ניהול פרטי החיבור: system_admin בלבד (בקשה מפורשת של דניאל — לא warehouse_manager).
+const woocommerce = require('./woocommerce');
+
+router.get('/admin/woocommerce-settings', requireRole('system_admin'), (req, res) => {
+  res.json(woocommerce.getMaskedSettings());
+});
+
+router.post('/admin/woocommerce-settings', requireRole('system_admin'), (req, res) => {
+  const { storeUrl, consumerKey, consumerSecret } = req.body || {};
+  res.json(woocommerce.saveSettings({ storeUrl, consumerKey, consumerSecret }));
+});
+
+router.post('/admin/woocommerce-settings/test', requireRole('system_admin'), async (req, res) => {
+  const result = await woocommerce.testConnection();
+  res.json(result);
+});
+
+// שליפת סטטוס מוצר לפי SKU — קריאה בלבד, למנהל מחסן (מסך חוסרי מלאי).
+router.get('/woocommerce/product-status', requireRole('warehouse_manager', 'system_admin'), async (req, res) => {
+  const { sku } = req.query;
+  if (!sku) return res.status(400).json({ error: 'חסר sku' });
+  try {
+    const result = await woocommerce.getProductStatusBySku(String(sku));
+    res.json(result);
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message });
+  }
+});
+
 // שער Sigma (סעיף 17.1): בדיקת קריאת הזמנה בודדת אמיתית, לצורך אימות לפני פיתוח מלא
 router.post('/admin/sigma-test/:companyId/:sidra/:num', requireRole('system_admin', 'warehouse_manager'), async (req, res) => {
   try {

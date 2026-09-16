@@ -149,7 +149,7 @@ export default function App() {
           ) : tab === 'inventory' ? (
             <InventoryShortages />
           ) : (
-            <ManagementTools />
+            <ManagementTools user={user} />
           )}
         </div>
       </div>

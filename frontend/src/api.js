@@ -111,4 +111,9 @@ export const api = {
   setAgentViewScope: (scope) => request('/settings/agent-view-scope', { method: 'POST', body: JSON.stringify({ scope }) }),
 
   integrationsStatus: () => request('/admin/integrations-status'),
+
+  getWooCommerceSettings: () => request('/admin/woocommerce-settings'),
+  saveWooCommerceSettings: (data) => request('/admin/woocommerce-settings', { method: 'POST', body: JSON.stringify(data) }),
+  testWooCommerceConnection: () => request('/admin/woocommerce-settings/test', { method: 'POST', body: JSON.stringify({}) }),
+  wooCommerceProductStatus: (sku) => request(`/woocommerce/product-status?sku=${encodeURIComponent(sku)}`),
 };
