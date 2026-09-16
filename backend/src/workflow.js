@@ -26,6 +26,38 @@ class RuleError extends Error {
 
 const ACTIVE_STATUSES = ['open', 'waiting_pick', 'picking', 'ready_for_check', 'ready_to_pack', 'waiting_pickup', 'delivered_to_ups'];
 
+// סדר השלבים הפיזיים של הזמנה (ליקוט -> בדיקה -> אריזה -> משלוח -> סגירה).
+// משמש רק לאכיפת קישור הזמנות (ר' assertLinkedGroupReady) — לא לשום דבר אחר.
+const STATUS_INDEX = {
+  open: 0, waiting_pick: 1, picking: 2, ready_for_check: 3,
+  ready_to_pack: 4, waiting_pickup: 5, delivered_to_ups: 6, closed: 7,
+};
+
+// הזמנות מקושרות (linked_group_id) אמורות להיארז ולהישלח יחד, לא רק לשבת
+// זו ליד זו בתור (ר' linkOrders למטה). לפני שהזמנה "בורחת קדימה" משלב האריזה
+// ואילך (pack-done / deliver-ups / self-pickup / close), בודקים שאף אחות
+// בקבוצה לא נשארה מאחור בשלב שהיא נמצאת בו כרגע — אם כן, חוסמים עם שגיאה
+// ברורה שמפנה את המחסן להזמנה שעדיין לא הגיעה. הזמנה מבוטלת בקבוצה לא חוסמת
+// יותר (היא לא תתקדם לעולם). לא חוסמים שלבי ליקוט/בדיקה מוקדמים יותר —
+// שם קצב עצמאי בין ההזמנות סביר (ר' בקשת דניאל, ייעוץ 16.9.2026).
+function assertLinkedGroupReady(state) {
+  if (!state.linked_group_id) return;
+  const myIndex = STATUS_INDEX[state.status];
+  if (myIndex == null) return;
+  const siblings = db.prepare(`
+    SELECT ws.status, oc.order_num
+    FROM workflow_state ws JOIN orders_cache oc ON oc.order_key = ws.order_key
+    WHERE ws.linked_group_id = ? AND ws.order_key != ?
+  `).all(state.linked_group_id, state.order_key);
+  for (const sib of siblings) {
+    if (sib.status === 'cancelled') continue;
+    const sibIndex = STATUS_INDEX[sib.status];
+    if (sibIndex == null || sibIndex < myIndex) {
+      throw new RuleError(`לא ניתן להמשיך — הזמנה מקושרת #${sib.order_num} עדיין לא הגיעה לאותו שלב (עדיין ב"${sib.status}")`);
+    }
+  }
+}
+
 function getState(orderKey) {
   return db.prepare('SELECT * FROM workflow_state WHERE order_key = ?').get(orderKey);
 }
@@ -174,6 +206,7 @@ function packDone(orderKey, userId, expectedVersion) {
   if (!state) throw new RuleError('הזמנה לא נמצאה');
   if (state.status !== 'ready_to_pack') throw new RuleError('ההזמנה אינה מוכנה לאריזה');
   assertVersion(state, expectedVersion);
+  assertLinkedGroupReady(state);
   return writeTransition(orderKey, userId, 'waiting_pickup', {}, 'סיום אריזה');
 }
 
@@ -182,6 +215,7 @@ function deliverToUps(orderKey, userId, expectedVersion) {
   if (!state) throw new RuleError('הזמנה לא נמצאה');
   if (state.status !== 'waiting_pickup') throw new RuleError('ההזמנה אינה ממתינה לאיסוף');
   assertVersion(state, expectedVersion);
+  assertLinkedGroupReady(state);
   return writeTransition(orderKey, userId, 'delivered_to_ups', { delivery_method: 'ups' }, 'מסירה ל UPS');
 }
 
@@ -195,6 +229,7 @@ function selfPickup(orderKey, userId, expectedVersion) {
   if (state.pending_addition_note) {
     throw new RuleError(`לא ניתן לסגור — ממתינה תוספת: ${state.pending_addition_note}`);
   }
+  assertLinkedGroupReady(state);
   return writeTransition(orderKey, userId, 'closed', { delivery_method: 'self_pickup' }, 'איסוף עצמי על ידי הלקוח');
 }
 
@@ -205,6 +240,7 @@ function closeOrder(orderKey, userId) {
   if (state.pending_addition_note) {
     throw new RuleError(`לא ניתן לסגור — ממתינה תוספת: ${state.pending_addition_note}`);
   }
+  assertLinkedGroupReady(state);
   return writeTransition(orderKey, userId, 'closed', {}, 'סגירה');
 }
 
