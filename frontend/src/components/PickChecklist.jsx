@@ -121,12 +121,14 @@ export default function PickChecklist({ mode, order, items, onItemUpdated, busy,
         );
         return (
           <div className={'pick-item-card' + rowDoneClass + (isMissing ? ' missing' : '')} key={it.line_no}>
-            <div className="pick-item-top">
-              {it.location && <span className="pick-location-badge">{it.location}</span>}
+            {it.location && <div className="pick-item-location">📍 {it.location}</div>}
+            <div className="pick-item-main-row">
               <div className="pick-item-name">{it.item_name}</div>
+              <div className="pick-item-qty">&times;{it.quantity}</div>
             </div>
-            <div className="meta">{it.item_code} · הוזמן: {it.quantity}{it.barcode ? ` · ברקוד: ${it.barcode}` : ''}</div>
+            <div className="pick-item-barcode">{it.item_code}{it.barcode ? ` · ${it.barcode}` : ''}</div>
 
+            <div className="pick-item-body">
             {mode === 'pick' && (
               <>
                 {it.pick_status && (
@@ -241,6 +243,7 @@ export default function PickChecklist({ mode, order, items, onItemUpdated, busy,
                 )}
               </>
             )}
+            </div>
           </div>
         );
       })}
