@@ -3,6 +3,7 @@ import { api } from '../api.js';
 import { ROLE_LABELS } from '../labels.js';
 
 const ROLES = Object.keys(ROLE_LABELS);
+const ROLE_ICONS = { agent: '🧑‍💼', warehouse: '📦', warehouse_manager: '🗂️', system_admin: '🛡️' };
 
 export default function UserManagement() {
   const [users, setUsers] = useState([]);
@@ -101,56 +102,67 @@ export default function UserManagement() {
 
       {users.map((u) => (
         <div className="admin-list-item" key={u.user_id}>
-          <div className="top">
-            <input
-              style={{ fontWeight: 'bold', width: '40%' }}
-              value={fieldFor(u, 'display_name')}
-              onChange={(e) => setField(u, 'display_name', e.target.value)}
-            />
-            <span className="meta">משתמש: {u.username}</span>
+          <div className="user-card-header">
+            <div className="user-card-icon">{ROLE_ICONS[fieldFor(u, 'role')] || '👤'}</div>
+            <div style={{ flex: 1 }}>
+              <input
+                className="text-input"
+                style={{ fontWeight: 'bold', marginBottom: 4 }}
+                value={fieldFor(u, 'display_name')}
+                onChange={(e) => setField(u, 'display_name', e.target.value)}
+              />
+              <div className="meta">משתמש: {u.username}</div>
+            </div>
+            {!u.is_active && <span className="badge inactive">מושבת</span>}
           </div>
-          <div className="actions" style={{ flexWrap: 'wrap', gap: 8 }}>
-            <select value={fieldFor(u, 'role')} onChange={(e) => setField(u, 'role', e.target.value)}>
+
+          <div className="user-card-fields">
+            <select className="select-input" value={fieldFor(u, 'role')} onChange={(e) => setField(u, 'role', e.target.value)}>
               {ROLES.map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
             </select>
             <input
+              className="text-input"
               type="text"
               placeholder="סיסמה חדשה (השאירו ריק ללא שינוי)"
               value={editing[u.user_id]?.password || ''}
               onChange={(e) => setField(u, 'password', e.target.value)}
-              style={{ minWidth: 180 }}
             />
             {fieldFor(u, 'role') === 'agent' && (
               <input
+                className="text-input"
                 type="number"
                 placeholder="מזהה סוכן בסיגמא (t_agents.agent_ID)"
                 value={fieldFor(u, 'sigma_agent_id') ?? ''}
                 onChange={(e) => setField(u, 'sigma_agent_id', e.target.value)}
-                style={{ minWidth: 200 }}
               />
             )}
-            <button className="btn-approve" disabled={busy} onClick={() => saveUser(u)}>שמירה</button>
-            <button className={u.is_active ? 'btn-reject' : 'btn-approve'} disabled={busy} onClick={() => toggleActive(u)}>
+          </div>
+
+          <div className="btn-row">
+            <button className="action-btn" disabled={busy} onClick={() => saveUser(u)}>שמירה</button>
+            <button className="action-btn secondary" disabled={busy} onClick={() => toggleActive(u)}>
               {u.is_active ? 'השבתה' : 'הפעלה מחדש'}
             </button>
-            <button className="btn-reject" disabled={busy} onClick={() => deleteUser(u)}>מחיקה לצמיתות</button>
+            <button className="action-btn danger" disabled={busy} onClick={() => deleteUser(u)}>מחיקה לצמיתות</button>
           </div>
-          {!u.is_active && <div className="meta" style={{ color: '#c0392b' }}>משתמש מושבת — לא יכול להתחבר</div>}
         </div>
       ))}
 
       {showNew ? (
         <div className="admin-list-item">
-          <div className="top"><b>משתמש חדש</b></div>
-          <div className="actions" style={{ flexWrap: 'wrap', gap: 8 }}>
-            <input placeholder="שם מלא" value={newUser.display_name} onChange={(e) => setNewUser({ ...newUser, display_name: e.target.value })} />
-            <input placeholder="שם משתמש (להתחברות)" value={newUser.username} onChange={(e) => setNewUser({ ...newUser, username: e.target.value })} />
-            <input placeholder="סיסמה" value={newUser.password} onChange={(e) => setNewUser({ ...newUser, password: e.target.value })} />
-            <select value={newUser.role} onChange={(e) => setNewUser({ ...newUser, role: e.target.value })}>
+          <div className="user-card-header">
+            <div className="user-card-icon">➕</div>
+            <b>משתמש חדש</b>
+          </div>
+          <div className="user-card-fields">
+            <input className="text-input" placeholder="שם מלא" value={newUser.display_name} onChange={(e) => setNewUser({ ...newUser, display_name: e.target.value })} />
+            <input className="text-input" placeholder="שם משתמש (להתחברות)" value={newUser.username} onChange={(e) => setNewUser({ ...newUser, username: e.target.value })} />
+            <input className="text-input" placeholder="סיסמה" value={newUser.password} onChange={(e) => setNewUser({ ...newUser, password: e.target.value })} />
+            <select className="select-input" value={newUser.role} onChange={(e) => setNewUser({ ...newUser, role: e.target.value })}>
               {ROLES.map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
             </select>
           </div>
-          <div className="btn-row" style={{ marginTop: 8 }}>
+          <div className="btn-row">
             <button className="action-btn" disabled={busy} onClick={createUser}>יצירת משתמש</button>
             <button className="action-btn secondary" onClick={() => setShowNew(false)}>ביטול</button>
           </div>
