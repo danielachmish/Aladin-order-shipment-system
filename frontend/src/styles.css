@@ -238,8 +238,11 @@ button { font-family: inherit; }
   background: #fff; border: 2px dashed var(--border); border-radius: 12px;
   margin-bottom: 10px; overflow: hidden;
 }
-.pick-item-card.done { border-color: var(--green); }
-.pick-item-card.missing { border-color: var(--red); }
+/* צביעת כרטיס לפי סטטוס — ירוק ללוקט, טיל-ירוק לשורה שהבודק אישר (כדי
+   להבדיל מ"נלקט" סתם), אדום לחסר. ר' בקשת דניאל 17.9.2026. */
+.pick-item-card.done { border-color: var(--green); background: #eafaf0; }
+.pick-item-card.checked { border-color: var(--teal); background: #e3f3ea; }
+.pick-item-card.missing { border-color: var(--red); background: #fdf1f0; }
 .pick-item-location { display: flex; align-items: center; gap: 4px; padding: 9px 12px 2px; font-size: 13px; font-weight: bold; color: var(--teal); }
 .pick-item-main-row { display: flex; align-items: flex-start; gap: 8px; padding: 2px 12px 10px; }
 .pick-item-name { flex: 1; font-size: 19px; font-weight: bold; color: var(--text); line-height: 1.3; }

@@ -22,10 +22,11 @@ test('linking two orders shows the badge, and packing ahead of a lagging sibling
   await openOrder(page, 54712);
   await page.getByRole('button', { name: 'התחלת ליקוט' }).click();
   await expect(page.locator('.badge.status-picking')).toBeVisible();
-  const pickButtons = page.getByRole('button', { name: '✓ ליקטתי הכל' }); // 2 שורות בהזמנת הדמו 54712
-  const pickCount = await pickButtons.count();
+  // הכפתור מוחלף ב"תיקון" אחרי סימון (בקשת דניאל 17.9.2026), אז הרשימה
+  // מתכווצת בכל לחיצה — .first() חוזר, לא nth(i) קבוע.
+  const pickCount = await page.getByRole('button', { name: '✓ ליקטתי הכל' }).count(); // 2 שורות בהזמנת הדמו 54712
   for (let i = 0; i < pickCount; i++) {
-    await pickButtons.nth(i).click();
+    await page.getByRole('button', { name: '✓ ליקטתי הכל' }).first().click();
     await page.waitForTimeout(150);
   }
   await page.getByRole('button', { name: /^סיום ליקוט/ }).click();

@@ -12,14 +12,13 @@ test('full order lifecycle: claim through close', async ({ page }) => {
   await page.getByRole('button', { name: 'התחלת ליקוט' }).click();
   await expect(page.locator('.badge.status-picking')).toBeVisible();
 
-  // ליקוט: מסמנים "ליקטתי הכל" על כל שורה (4 פריטים בהזמנת הדמו). הכפתור
-  // לא נעלם אחרי לחיצה (השורה עדיין מציגה אותו, רק עם סטטוס "נלקט" מעליו) -
-  // אז חייבים ללחוץ לפי אינדקס קבוע, לא .first() חוזר (שהיה לוחץ שוב על אותה שורה).
-  const pickButtons = page.getByRole('button', { name: '✓ ליקטתי הכל' });
-  const pickCount = await pickButtons.count();
+  // ליקוט: מסמנים "ליקטתי הכל" על כל שורה (4 פריטים בהזמנת הדמו). אחרי
+  // סימון, הכפתור מוחלף ב"תיקון" (בקשת דניאל 17.9.2026 — תמיד אפשר לחזור
+  // ולתקן) — אז הרשימה מתכווצת בכל לחיצה, וחייבים .first() חוזר, לא nth(i) קבוע.
+  const pickCount = await page.getByRole('button', { name: '✓ ליקטתי הכל' }).count();
   expect(pickCount).toBe(4);
   for (let i = 0; i < pickCount; i++) {
-    await pickButtons.nth(i).click();
+    await page.getByRole('button', { name: '✓ ליקטתי הכל' }).first().click();
     await page.waitForTimeout(150); // מחכים לרענון הרשימה בין לחיצות
   }
 

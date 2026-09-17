@@ -92,7 +92,11 @@ export default function PickChecklist({ mode, order, items, onItemUpdated, busy,
       {sorted.map((it) => {
         const isMissing = it.pick_status === 'missing';
         const isShortage = it.pick_status === 'missing' || it.pick_status === 'partial';
-        const rowDoneClass = mode === 'pick' ? (it.pick_status ? ' done' : '') : ((isMissing || it.checked) ? ' done' : '');
+        // צבע כרטיס לפי סטטוס — ירוק ללוקט, טיל-ירוק כהה יותר לשורה שהבודק אישר
+        // (כדי להבדיל מ"נלקט" סתם), אדום לחסר. ר' בקשת דניאל 17.9.2026.
+        const rowDoneClass = mode === 'pick'
+          ? ((it.pick_status === 'picked' || it.pick_status === 'partial') ? ' done' : '')
+          : (it.checked ? ' checked' : '');
         const replaceBlock = isShortage && (
           replaceLine === it.line_no ? (
             <div className="btn-row" onClick={(e) => e.stopPropagation()}>
@@ -163,6 +167,17 @@ export default function PickChecklist({ mode, order, items, onItemUpdated, busy,
                       <button className="action-btn danger" disabled={busy} onClick={() => markPicked(it, 'missing', 0, editNote)}>לא נמצא בכלל</button>
                       <button className="action-btn secondary" onClick={() => setEditingLine(null)}>ביטול</button>
                     </div>
+                  </div>
+                ) : it.pick_status ? (
+                  // תמיד יש אפשרות לחזור ולתקן מה שכבר סומן — לא רק במסך הבדיקה
+                  // (בקשת דניאל 17.9.2026: "תמיד יש אפשרות לחזור לשלב הקודם")
+                  <div className="btn-row">
+                    <button
+                      className="action-btn secondary small" disabled={busy}
+                      onClick={() => { setEditingLine(it.line_no); setEditQty(it.qty_picked != null ? String(it.qty_picked) : ''); setEditNote(it.pick_note || ''); }}
+                    >
+                      🔄 תיקון
+                    </button>
                   </div>
                 ) : (
                   <div className="btn-row">
