@@ -236,6 +236,7 @@ function baseOrderRow(order_key) {
            ws.version, ws.hold_reason, ws.pre_wait_status, ws.pending_addition_note, ws.delivery_method,
            ws.linked_group_id, ws.updated_at AS wf_updated_at,
            ws.package_count, ws.pallet_count, ws.cod_type, ws.cod_amount, ws.cod_due_date,
+           ws.planned_delivery_method, ws.special_instructions,
            COALESCE(u.display_name, oc.sigma_agent_name) AS agent_name, cu.display_name AS claimed_by_name
     FROM orders_cache oc
     JOIN workflow_state ws ON ws.order_key = oc.order_key
@@ -280,6 +281,7 @@ router.get('/orders', (req, res) => {
     SELECT oc.order_key, oc.order_num, oc.customer_name, oc.total_amount, oc.line_count, oc.notes,
            ws.status, ws.priority, ws.agent_id, ws.claimed_by, ws.queue_entered_at, ws.version,
            ws.pending_addition_note, ws.linked_group_id,
+           ws.cod_type, ws.planned_delivery_method, ws.special_instructions,
            COALESCE(u.display_name, oc.sigma_agent_name) AS agent_name, cu.display_name AS claimed_by_name
     FROM orders_cache oc
     JOIN workflow_state ws ON ws.order_key = oc.order_key
@@ -308,13 +310,17 @@ router.get('/orders', (req, res) => {
 
   let rows = db.prepare(sql).all(...params);
 
-  // הוספת מיקום בתור להזמנות שבתור ממתינה לליקוט
+  // הוספת מיקום בתור להזמנות שבתור ממתינה לליקוט + סכום גוביינא מחושב
+  // (רק כשיש גוביינא בכלל — לא לבזבז שאילתה על כל שורה סתם)
   rows = rows.map((r) => {
+    let extra = {};
     if (r.status === 'waiting_pick') {
-      const pos = positionInQueue(r.order_key, 'waiting_pick');
-      return { ...r, queue_position: pos };
+      extra.queue_position = positionInQueue(r.order_key, 'waiting_pick');
     }
-    return r;
+    if (r.cod_type && r.cod_type !== 'none') {
+      extra.cod_display_amount = wf.computeCodDisplay(r.order_key);
+    }
+    return { ...r, ...extra };
   });
 
   res.json({ orders: rows, agent_view_scope: scope });
@@ -639,8 +645,18 @@ router.post('/orders/:key/unmark-shortage-invoiced', requireRole('warehouse_mana
 
 // גוביינא (שיק דחוי) — ר' ייעוץ 17.9.2026. המזכירה בלבד (warehouse_manager/system_admin).
 router.post('/orders/:key/cod', requireRole('warehouse_manager', 'system_admin'),
-  handleWorkflowAction((key, req) => wf.setCod(key, req.user.id, {
+  handleWorkflowAction((key, req) => wf.updateOrderSettings(key, req.user.id, {
     codType: req.body?.codType, amount: req.body?.amount, dueDate: req.body?.dueDate,
+  })));
+
+// "⚙️ הגדרות הזמנה" — פאנל מהיר (גוביינא + משלוח מתוכנן + הערה + עדיפות)
+// שמנהל יכול למלא מוקדם, ישר מרשימת ההזמנות, לא רק אחרי שההזמנה עברה
+// להיסטוריה. ר' ייעוץ 17.9.2026. שדה שלא נשלח בכלל נשאר ללא שינוי.
+router.post('/orders/:key/settings', requireRole('warehouse_manager', 'system_admin'),
+  handleWorkflowAction((key, req) => wf.updateOrderSettings(key, req.user.id, {
+    codType: req.body?.codType, amount: req.body?.amount, dueDate: req.body?.dueDate,
+    plannedDeliveryMethod: req.body?.plannedDeliveryMethod, specialInstructions: req.body?.specialInstructions,
+    priority: req.body?.priority,
   })));
 
 // "חוסרי מלאי היום" — תצוגה מרוכזת לפי מק"ט למנהל מחסן (לא לפי הזמנה, כמו

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api.js';
 import { statusLabel, priorityLabel } from '../labels.js';
 import { onLive } from '../ws.js';
+import OrderSettingsModal from '../components/OrderSettingsModal.jsx';
 
 const METRICS = [
   { key: 'waiting_pick', label: 'ממתינות לליקוט' },
@@ -18,7 +19,10 @@ export default function OrdersList({ user, onOpenOrder }) {
   const [loading, setLoading] = useState(true);
   const [scope, setScope] = useState('all');
   const [flashKeys, setFlashKeys] = useState(new Set());
+  const [settingsOrder, setSettingsOrder] = useState(null);
   const prevVersions = useRef({});
+  const isManager = user.role === 'warehouse_manager' || user.role === 'system_admin';
+  const DELIVERY_PLAN_BADGE = { ups: '🚚 UPS', self_pickup: '🏠 איסוף עצמי' };
 
   async function load() {
     try {
@@ -118,7 +122,18 @@ export default function OrdersList({ user, onOpenOrder }) {
         >
           <div className="row1">
             <span className="order-num">הזמנה {o.order_num}</span>
-            <span>{o.total_amount ? `₪${o.total_amount}` : ''}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span>{o.total_amount ? `₪${o.total_amount}` : ''}</span>
+              {isManager && (
+                <button
+                  className="settings-gear-btn"
+                  title="הגדרות הזמנה"
+                  onClick={(e) => { e.stopPropagation(); setSettingsOrder(o); }}
+                >
+                  ⚙️
+                </button>
+              )}
+            </div>
           </div>
           <div className="customer">{o.customer_name} · {o.line_count} שורות</div>
           <div className="row2">
@@ -126,7 +141,14 @@ export default function OrdersList({ user, onOpenOrder }) {
             {o.priority !== 'normal' && <span className={`badge priority-${o.priority}`}>{priorityLabel(o.priority)}</span>}
             {o.pending_addition_note && <span className="badge status-on_hold">⏳ ממתינה תוספת</span>}
             {o.linked_group_id && <span className="badge status-on_hold">🔗 מקושרת</span>}
+            {o.cod_type && o.cod_type !== 'none' && (
+              <span className="badge status-closed">💰 {o.cod_display_amount != null ? `₪${o.cod_display_amount}` : 'גוביינא'}</span>
+            )}
+            {o.planned_delivery_method && <span className="badge status-closed">{DELIVERY_PLAN_BADGE[o.planned_delivery_method]}</span>}
           </div>
+          {o.special_instructions && (
+            <div className="meta" style={{ color: 'var(--teal-dark)' }}>📝 {o.special_instructions}</div>
+          )}
           <div className="meta">
             {o.status === 'waiting_pick' && o.queue_position && (
               <span>בתור {o.queue_position.position} מתוך {o.queue_position.total} · {o.queue_position.ahead} הזמנות לפניה</span>
@@ -137,6 +159,14 @@ export default function OrdersList({ user, onOpenOrder }) {
         </div>
       ))}
       </div>
+
+      {settingsOrder && (
+        <OrderSettingsModal
+          order={settingsOrder}
+          onClose={() => setSettingsOrder(null)}
+          onSaved={() => load()} // מרענן את כל הרשימה - כולל cod_display_amount מחושב ושכפול לקבוצה מקושרת
+        />
+      )}
     </div>
   );
 }

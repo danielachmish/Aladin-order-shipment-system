@@ -442,20 +442,35 @@ function setPriority(orderKey, priority, managerId) {
 }
 
 const COD_TYPES = ['none', 'full', 'custom', 'full_plus_extra'];
+const DELIVERY_PLAN_TYPES = ['ups', 'self_pickup'];
 
-// גוביינא (שיק דחוי) — ר' ייעוץ 17.9.2026. מוגדר ע"י המזכירה (warehouse_manager)
-// במסך היסטוריה, עצמאי מסטטוס העבודה. הזמנות מקושרות יוצאות כמשלוח פיזי אחד,
-// אז הגדרה על הזמנה מקושרת משתכפלת אוטומטית על כל ההזמנות באותה קבוצה — כדי
-// שלא משנה דרך איזו הזמנה בקבוצה נכנסים, רואים תמיד את אותו מידע.
-function setCod(orderKey, userId, { codType, amount, dueDate }) {
-  if (!COD_TYPES.includes(codType)) throw new RuleError('סוג גוביינא לא תקין');
-  if ((codType === 'custom' || codType === 'full_plus_extra') && (amount == null || Number(amount) <= 0)) {
-    throw new RuleError('יש להזין סכום');
-  }
-  if (codType !== 'none' && !dueDate) throw new RuleError('יש להזין תאריך פירעון');
-
+// הגדרות הזמנה שהמנהל קובע מוקדם, לא רק כשהיא מגיעה להיסטוריה (ר' ייעוץ
+// 17.9.2026): גוביינא (שיק דחוי), אופן משלוח מתוכנן (כוונה בלבד — נפרד
+// מ-delivery_method שנקבע בפועל ע"י המחסן בזמן אמת), הערה חופשית, ועדיפות.
+//
+// גוביינא/משלוח מתוכנן/הערה משתכפלים אוטומטית על כל הזמנות הקבוצה המקושרת
+// (משלוח פיזי אחד = אותה החלטה לכולן). עדיפות חלה רק על ההזמנה הנוכחית —
+// היא משפיעה על סדר בתור, לא על מה שיוצא באותו משלוח.
+//
+// כל שדה שלא נשלח (undefined) נשאר ללא שינוי — כך ש-/orders/:key/cod הישן
+// יכול להמשיך לשלוח רק codType/amount/dueDate בלי לגעת בשאר.
+function updateOrderSettings(orderKey, userId, { codType, amount, dueDate, plannedDeliveryMethod, specialInstructions, priority } = {}) {
   const state = getState(orderKey);
   if (!state) throw new RuleError('הזמנה לא נמצאה');
+
+  if (codType !== undefined) {
+    if (!COD_TYPES.includes(codType)) throw new RuleError('סוג גוביינא לא תקין');
+    if ((codType === 'custom' || codType === 'full_plus_extra') && (amount == null || Number(amount) <= 0)) {
+      throw new RuleError('יש להזין סכום');
+    }
+    if (codType !== 'none' && !dueDate) throw new RuleError('יש להזין תאריך פירעון');
+  }
+  if (plannedDeliveryMethod !== undefined && plannedDeliveryMethod && !DELIVERY_PLAN_TYPES.includes(plannedDeliveryMethod)) {
+    throw new RuleError('אופן משלוח מתוכנן לא תקין');
+  }
+  if (priority !== undefined && !['normal', 'urgent', 'next'].includes(priority)) {
+    throw new RuleError('עדיפות לא תקינה');
+  }
 
   const groupKeys = state.linked_group_id
     ? db.prepare('SELECT order_key FROM workflow_state WHERE linked_group_id = ?').all(state.linked_group_id).map((r) => r.order_key)
@@ -464,21 +479,32 @@ function setCod(orderKey, userId, { codType, amount, dueDate }) {
   const tx = db.transaction(() => {
     for (const key of groupKeys) {
       const s = getState(key);
-      db.prepare(`
-        UPDATE workflow_state
-        SET cod_type = ?, cod_amount = ?, cod_due_date = ?, cod_set_by = ?, cod_set_at = datetime('now'),
-            version = version + 1, updated_at = datetime('now')
-        WHERE order_key = ?
-      `).run(
-        codType,
-        codType === 'none' ? null : (amount != null ? Number(amount) : null),
-        codType === 'none' ? null : dueDate,
-        userId, key
-      );
+      const sets = ['version = version + 1', "updated_at = datetime('now')"];
+      const params = { key };
+      if (codType !== undefined) {
+        sets.push('cod_type = @cod_type', 'cod_amount = @cod_amount', 'cod_due_date = @cod_due_date', 'cod_set_by = @cod_set_by', "cod_set_at = datetime('now')");
+        params.cod_type = codType;
+        params.cod_amount = codType === 'none' ? null : (amount != null ? Number(amount) : null);
+        params.cod_due_date = codType === 'none' ? null : dueDate;
+        params.cod_set_by = userId;
+      }
+      if (plannedDeliveryMethod !== undefined) {
+        sets.push('planned_delivery_method = @planned_delivery_method');
+        params.planned_delivery_method = plannedDeliveryMethod || null;
+      }
+      if (specialInstructions !== undefined) {
+        sets.push('special_instructions = @special_instructions');
+        params.special_instructions = specialInstructions || null;
+      }
+      if (priority !== undefined && key === orderKey) {
+        sets.push('priority = @priority');
+        params.priority = priority;
+      }
+      db.prepare(`UPDATE workflow_state SET ${sets.join(', ')} WHERE order_key = @key`).run(params);
       db.prepare(`
         INSERT INTO workflow_events (event_id, order_key, user_id, from_status, to_status, note)
         VALUES (?, ?, ?, ?, ?, ?)
-      `).run(uid('evt'), key, userId, s.status, s.status, `גוביינא עודכנה: ${codType}`);
+      `).run(uid('evt'), key, userId, s.status, s.status, 'הגדרות הזמנה עודכנו');
     }
   });
   tx();
@@ -628,6 +654,6 @@ module.exports = {
   updateItemPick, updateItemCheck, finishCheck, correctPickedItem,
   markShortageInvoiced, unmarkShortageInvoiced,
   linkOrders, unlinkOrder,
-  setCod, computeCodDisplay,
+  updateOrderSettings, computeCodDisplay,
   listShortedItems, clearShortedItem,
 };

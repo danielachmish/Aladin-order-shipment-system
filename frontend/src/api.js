@@ -93,6 +93,7 @@ export const api = {
   },
   markShortageInvoiced: (key) => request(`/orders/${encodeURIComponent(key)}/mark-shortage-invoiced`, { method: 'POST', body: JSON.stringify({}) }),
   setCod: (key, { codType, amount, dueDate }) => request(`/orders/${encodeURIComponent(key)}/cod`, { method: 'POST', body: JSON.stringify({ codType, amount, dueDate }) }),
+  orderSettings: (key, data) => request(`/orders/${encodeURIComponent(key)}/settings`, { method: 'POST', body: JSON.stringify(data) }),
   unmarkShortageInvoiced: (key) => request(`/orders/${encodeURIComponent(key)}/unmark-shortage-invoiced`, { method: 'POST', body: JSON.stringify({}) }),
   inventoryShortages: (params = {}) => {
     const qs = new URLSearchParams(params).toString();

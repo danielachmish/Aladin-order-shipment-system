@@ -105,6 +105,8 @@ CREATE TABLE IF NOT EXISTS workflow_state (
   cod_due_date    TEXT, -- תאריך פירעון השיק
   cod_set_by      TEXT,
   cod_set_at      TEXT,
+  planned_delivery_method TEXT, -- ups | self_pickup | NULL — כוונת מנהל מוקדמת (ר' ייעוץ 17.9.2026), נפרד מ-delivery_method שהוא רישום מה שבאמת קרה
+  special_instructions    TEXT, -- הערה חופשית של מנהל ("לא להוציא לפני תשלום" וכו') — נפרד מ-orders_cache.notes שמגיע מסיגמא ונדרס בכל סנכרון
   updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (order_key) REFERENCES orders_cache(order_key)
 );

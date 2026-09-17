@@ -325,6 +325,15 @@ textarea, select {
 }
 .count-field input[type="number"]:focus { outline: none; border-color: var(--teal-dark); box-shadow: 0 0 0 3px rgba(11,92,102,.15); }
 
+/* פאנל "⚙️ הגדרות הזמנה" (עדיפות/משלוח מתוכנן/גוביינא) — ר' ייעוץ 17.9.2026 */
+.settings-field { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; gap: 10px; }
+.settings-field label { font-weight: bold; color: var(--text); font-size: 14px; }
+.settings-field select { flex: 1; max-width: 200px; padding: 9px 10px; border-radius: 8px; border: 1px solid var(--border); font-size: 14px; background: #fff; }
+.settings-gear-btn {
+  border: none; background: var(--teal-light); color: var(--teal-dark); border-radius: 8px;
+  width: 32px; height: 32px; font-size: 15px; cursor: pointer; flex-shrink: 0;
+}
+
 /* חיפוש הזמנה לפי מספר/לקוח בשעת קישור הזמנות (בקשת דניאל 14.9.2026) */
 .link-search-results {
   max-height: 220px; overflow-y: auto; border: 1px solid var(--border);

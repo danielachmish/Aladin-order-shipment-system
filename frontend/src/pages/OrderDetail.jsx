@@ -4,6 +4,7 @@ import { statusLabel, priorityLabel, shipLabel } from '../labels.js';
 import { onLive } from '../ws.js';
 import OrderTimeline from '../components/OrderTimeline.jsx';
 import PickChecklist from '../components/PickChecklist.jsx';
+import OrderSettingsModal from '../components/OrderSettingsModal.jsx';
 import { shareShortageSummary } from '../shareShortage.js';
 import { formatDateSafe } from '../format.js';
 
@@ -36,6 +37,7 @@ export default function OrderDetail({ user, orderKey, onBack }) {
   const [packageCount, setPackageCount] = useState('');
   const [palletCount, setPalletCount] = useState('');
   const [linkedWarning, setLinkedWarning] = useState(null);
+  const [showSettings, setShowSettings] = useState(false);
 
   // חיפוש הזמנה לקישור — גם לפי מספר וגם לפי שם לקוח (בקשת דניאל 14.9.2026:
   // "לא תמיד זוכר את מספר ההזמנה"). מציג את ההזמנות התואמות, ממוינות מהחדשה
@@ -193,6 +195,13 @@ export default function OrderDetail({ user, orderKey, onBack }) {
         {order.delivery_method && (
           <div className="meta">אופן משלוח: {order.delivery_method === 'self_pickup' ? 'איסוף עצמי' : 'UPS'}</div>
         )}
+        {!order.delivery_method && order.planned_delivery_method && (
+          <div className="meta">אופן משלוח מתוכנן: {order.planned_delivery_method === 'self_pickup' ? '🏠 איסוף עצמי' : '🚚 UPS'}</div>
+        )}
+        {order.cod_type && order.cod_type !== 'none' && (
+          <div className="meta">💰 גוביינא: ₪{order.cod_display_amount} · לתאריך {order.cod_due_date}</div>
+        )}
+        {order.special_instructions && <div className="meta">📝 {order.special_instructions}</div>}
         {order.agent_name && <div className="meta">סוכן משויך: {order.agent_name}</div>}
         {order.status === 'on_hold' && <div className="meta" style={{ color: '#c0392b', marginTop: 6 }}>סיבה: {order.hold_reason}</div>}
         {order.pending_addition_note && (
@@ -224,6 +233,10 @@ export default function OrderDetail({ user, orderKey, onBack }) {
             <button className="action-btn secondary" disabled={busy} onClick={() => act(() => api.additionReceived(orderKey))}>התוספת הגיעה</button>
           ) : (
             <button className="action-btn secondary" disabled={busy} onClick={() => setShowAddition(true)}>תוספת בדרך</button>
+          )}
+
+          {isManager && (
+            <button className="action-btn secondary" disabled={busy} onClick={() => setShowSettings(true)}>⚙️ הגדרות הזמנה</button>
           )}
 
           {isManager && (
@@ -468,6 +481,14 @@ export default function OrderDetail({ user, orderKey, onBack }) {
             <button className="action-btn secondary" onClick={() => setShowCancel(false)}>סגירה</button>
           </div>
         </div>
+      )}
+
+      {showSettings && (
+        <OrderSettingsModal
+          order={order}
+          onClose={() => setShowSettings(false)}
+          onSaved={() => load()}
+        />
       )}
 
       {linkedWarning && (
