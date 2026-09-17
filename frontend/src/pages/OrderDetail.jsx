@@ -487,22 +487,22 @@ export default function OrderDetail({ user, orderKey, onBack }) {
       {showPack && (
         <div className="modal-backdrop" onClick={() => setShowPack(false)}>
           <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
-            <h3>כמה יצא בפועל?</h3>
-            <div className="meta" style={{ marginBottom: 8 }}>
+            <h3>📦 כמה יצא בפועל?</h3>
+            <div className="meta" style={{ marginBottom: 14 }}>
               כדי שהמזכירה תדע כמה שטרי מטען UPS להפיק. אפשר למלא אחד מהשניים, גם שניהם, או להשאיר ריק ולדלג.
             </div>
-            <div className="form-row" style={{ marginBottom: 8 }}>
-              <label>חבילות</label>
+            <div className="count-field">
+              <label><span className="count-field-icon">📦</span> חבילות</label>
               <input
-                type="number" min="0" placeholder="0"
+                type="number" min="0" inputMode="numeric" placeholder="0"
                 value={packageCount}
                 onChange={(e) => setPackageCount(e.target.value)}
               />
             </div>
-            <div className="form-row" style={{ marginBottom: 8 }}>
-              <label>משטחים</label>
+            <div className="count-field">
+              <label><span className="count-field-icon">🟫</span> משטחים</label>
               <input
-                type="number" min="0" placeholder="0"
+                type="number" min="0" inputMode="numeric" placeholder="0"
                 value={palletCount}
                 onChange={(e) => setPalletCount(e.target.value)}
               />
