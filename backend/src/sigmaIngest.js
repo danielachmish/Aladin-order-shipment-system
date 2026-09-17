@@ -104,8 +104,10 @@ function ingestOrders(orders) {
   });
   tx(orders);
 
+  // Date.now() לבדו יכול להתנגש בקריאות עוקבות מהירות (למשל בבדיקות) —
+  // תוספת אקראית מבטיחה ייחודיות גם באותה מילישנייה.
   db.prepare(`INSERT INTO sync_runs (run_id, source, ok, detail) VALUES (?, 'sigma', 1, ?)`)
-    .run(`run_${Date.now()}`, JSON.stringify({ received: orders.length, created, updated }));
+    .run(`run_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`, JSON.stringify({ received: orders.length, created, updated }));
 
   return { received: orders.length, created, updated };
 }

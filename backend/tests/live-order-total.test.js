@@ -54,6 +54,20 @@ describe('order total is computed live from current item lines, not the frozen S
     expect(order.total_amount).toBe(100);
   });
 
+  // בקשת דניאל 17.9.2026: "מספיק בסכום 2 ספרות אחרי הנקודה" — ראה בפועל
+  // 1316.8799999999999 על הזמנה אמיתית (סכימת floats ב-SQLite).
+  it('rounds the live total to 2 decimal places, avoiding float noise like 1316.8799999999999', async () => {
+    seedOrder(db, { orderKey: '3|0|5', orderNum: 5 });
+    db.prepare(`
+      INSERT INTO order_items_cache (order_key, line_no, item_code, item_name, quantity, price)
+      VALUES ('3|0|5', 1, 'A1', 'פריט א', 3, 219.99), ('3|0|5', 2, 'B1', 'פריט ב', 1, 656.91)
+    `).run(); // 3*219.99 + 656.91 = 1316.8799999999999 בחישוב float גולמי
+
+    const res = await request(app).get('/api/orders').set('Authorization', `Bearer ${managerToken}`);
+    const order = res.body.orders.find((o) => o.order_key === '3|0|5');
+    expect(order.total_amount).toBe(1316.88);
+  });
+
   it('falls back to the cached total_amount when there are no item lines yet', async () => {
     seedOrder(db, { orderKey: '3|0|4', orderNum: 4 });
     db.prepare(`UPDATE orders_cache SET total_amount = 777 WHERE order_key = '3|0|4'`).run();

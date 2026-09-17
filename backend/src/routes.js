@@ -18,7 +18,7 @@ const router = express.Router();
 // שישקף שינויים בפועל (חוסר, תיקון כמות וכו'). נופל חזרה לערך הקפוא רק אם
 // אין עדיין שורות פריטים בכלל (למשל הזמנה שעוד לא סונכרנה עם פריטים).
 // ר' בקשת דניאל 17.9.2026: "הסכום... בפועל מה שקיים כרגע".
-const LIVE_TOTAL_SQL = `COALESCE((SELECT SUM(quantity * price) FROM order_items_cache oic WHERE oic.order_key = oc.order_key), oc.total_amount)`;
+const LIVE_TOTAL_SQL = `ROUND(COALESCE((SELECT SUM(quantity * price) FROM order_items_cache oic WHERE oic.order_key = oc.order_key), oc.total_amount), 2)`;
 
 // תיקון אבטחה (סקירה 14.9.2026): לא הייתה שום הגנה מפני ניחוש-סיסמה בכוח גס על
 // /auth/login (סיסמאות טקסט-גלוי, לעיתים קצרות כמו "1234" — ר' seed.js/auth.js).

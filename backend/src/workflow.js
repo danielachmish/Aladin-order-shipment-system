@@ -555,7 +555,7 @@ function computeLiveTotal(orderKey) {
   const itemsTotal = db.prepare(
     'SELECT SUM(quantity * price) AS total FROM order_items_cache WHERE order_key = ?'
   ).get(orderKey).total;
-  if (itemsTotal != null) return itemsTotal;
+  if (itemsTotal != null) return Math.round(itemsTotal * 100) / 100;
   const row = db.prepare('SELECT total_amount AS total FROM orders_cache WHERE order_key = ?').get(orderKey);
   return row?.total || 0;
 }
@@ -585,7 +585,8 @@ function computeCodDisplay(orderKey) {
   }
 
   const suppliedTotal = Math.max(0, groupTotal - computeShortageValue(orderKeys));
-  return state.cod_type === 'full_plus_extra' ? suppliedTotal + (state.cod_amount || 0) : suppliedTotal;
+  const result = state.cod_type === 'full_plus_extra' ? suppliedTotal + (state.cod_amount || 0) : suppliedTotal;
+  return Math.round(result * 100) / 100;
 }
 
 // "הוחלף צבע" — לקוח אישר תחליף לפריט חסר (SKU/צבע אחר, אותו מחיר), עם כמות
