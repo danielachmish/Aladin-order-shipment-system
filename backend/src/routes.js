@@ -609,7 +609,8 @@ router.get('/history', requireRole('warehouse', 'warehouse_manager', 'system_adm
   const userStmt = db.prepare(`SELECT display_name FROM users WHERE user_id = ?`);
   // דוח חוסרים למזכירה — ר' PICKING_QC_SPEC.md סעיף 5.3 (סוכם עם דניאל 14.9.2026)
   const shortagesStmt = db.prepare(`
-    SELECT line_no, item_code, item_name, quantity AS qty_ordered, qty_picked, pick_status, pick_note, check_note, replaced_to
+    SELECT line_no, item_code, item_name, quantity AS qty_ordered, qty_picked, pick_status, pick_note, check_note,
+           replaced_to, replaced_qty, replaced_confirmed
     FROM order_items_cache
     WHERE order_key = ? AND pick_status IN ('missing', 'partial')
     ORDER BY line_no
@@ -643,14 +644,27 @@ router.post('/orders/:key/mark-shortage-invoiced', requireRole('warehouse_manage
 router.post('/orders/:key/unmark-shortage-invoiced', requireRole('warehouse_manager', 'system_admin'),
   handleWorkflowAction((key, req) => wf.unmarkShortageInvoiced(key, req.user.id)));
 
-// "הוחלף צבע" — תיעוד תחליף שהלקוח אישר לפריט חסר (ר' ייעוץ 17.9.2026).
-// זמין למלקט/בודק (warehouse) בזמן אמת וגם למנהל מההיסטוריה אחר כך —
-// לא נכתב לסיגמא. replacedTo ריק/חסר = מבטל את הסימון.
+// "הוחלף צבע" — תיעוד תחליף שהלקוח אישר לפריט חסר, עם כמות מפורשת (ר' ייעוץ
+// 17.9.2026). זמין למלקט/בודק (warehouse) בזמן אמת וגם למנהל מההיסטוריה
+// אחר כך — לא נכתב לסיגמא. replacedTo ריק/חסר = מבטל את הסימון.
 router.post('/orders/:key/items/:lineNo/replace', requireRole('warehouse', 'warehouse_manager', 'system_admin'), (req, res) => {
   try {
     const key = decodeURIComponent(req.params.key);
     const lineNo = Number(req.params.lineNo);
-    const item = wf.markItemReplaced(key, lineNo, req.user.id, req.body?.replacedTo);
+    const item = wf.markItemReplaced(key, lineNo, req.user.id, req.user.role, req.body?.replacedTo, req.body?.replacedQty);
+    res.json({ ok: true, item });
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message });
+  }
+});
+
+// הבודק מאשר תחליף שהמלקט כבר הזין, בלי לערוך מחדש — ר' בקשת דניאל
+// 17.9.2026 ("הבודק צריך לוודא שאכן הביא את הדבר הנכון... וגם את הכמות").
+router.post('/orders/:key/items/:lineNo/confirm-replace', requireRole('warehouse', 'warehouse_manager', 'system_admin'), (req, res) => {
+  try {
+    const key = decodeURIComponent(req.params.key);
+    const lineNo = Number(req.params.lineNo);
+    const item = wf.confirmItemReplacement(key, lineNo, req.user.id);
     res.json({ ok: true, item });
   } catch (e) {
     res.status(e.status || 500).json({ error: e.message });

@@ -174,14 +174,14 @@ describe('packages count + COD (gvina)', () => {
       expect(order.cod_display_amount).toBe(940);
     });
 
-    it('a color-replaced item does not lower the COD amount (same price, same item)', async () => {
+    it('a manager-entered (auto-confirmed) color-replacement does not lower the COD amount', async () => {
       seedOrder(db, { orderKey: '3|0|14', orderNum: 14, status: 'ready_for_check' });
       db.prepare(`UPDATE orders_cache SET total_amount = 1000 WHERE order_key = '3|0|14'`).run();
       db.prepare(`
         INSERT INTO order_items_cache (order_key, line_no, item_code, item_name, quantity, price, pick_status, qty_picked)
         VALUES ('3|0|14', 1, 'A1', 'פריט חסר', 5, 20, 'missing', 0)
       `).run();
-      await request(app).post('/api/orders/3%7C0%7C14/items/1/replace').set('Authorization', `Bearer ${managerToken}`).send({ replacedTo: 'הוחלף לשחור' });
+      await request(app).post('/api/orders/3%7C0%7C14/items/1/replace').set('Authorization', `Bearer ${managerToken}`).send({ replacedTo: 'הוחלף לשחור', replacedQty: 5 });
 
       await request(app).post('/api/orders/3%7C0%7C14/cod').set('Authorization', `Bearer ${managerToken}`).send({ codType: 'full', dueDate: '2026-10-01' });
 
@@ -190,6 +190,41 @@ describe('packages count + COD (gvina)', () => {
       expect(order.cod_display_amount).toBe(1000);
       const shortage = order.shortages.find((s) => s.line_no === 1);
       expect(shortage.replaced_to).toBe('הוחלף לשחור');
+      expect(shortage.replaced_qty).toBe(5);
+      expect(shortage.replaced_confirmed).toBe(1);
+    });
+
+    it('a picker-entered replacement (during picking) stays pending and still counts against COD until the checker confirms it', async () => {
+      seedOrder(db, { orderKey: '3|0|19', orderNum: 19, status: 'picking' });
+      db.prepare(`UPDATE orders_cache SET total_amount = 1000 WHERE order_key = '3|0|19'`).run();
+      db.prepare(`
+        INSERT INTO order_items_cache (order_key, line_no, item_code, item_name, quantity, price, pick_status, qty_picked)
+        VALUES ('3|0|19', 1, 'A1', 'פריט חסר', 5, 20, 'missing', 0)
+      `).run();
+      const res = await request(app)
+        .post('/api/orders/3%7C0%7C19/items/1/replace')
+        .set('Authorization', `Bearer ${warehouseToken}`)
+        .send({ replacedTo: 'שחור', replacedQty: 5 });
+      expect(res.body.item.replaced_confirmed).toBe(0);
+
+      // ההיסטוריה מציגה רק הזמנות שכבר עברו ליקוט; מדמים את המעבר לבדיקה
+      // כדי לראות את סכום הגוביינא — לא נוגע ב-replaced_confirmed עצמו.
+      db.prepare(`UPDATE workflow_state SET status = 'ready_for_check' WHERE order_key = '3|0|19'`).run();
+
+      await request(app).post('/api/orders/3%7C0%7C19/cod').set('Authorization', `Bearer ${managerToken}`).send({ codType: 'full', dueDate: '2026-10-01' });
+      let hist = await request(app).get('/api/history').set('Authorization', `Bearer ${managerToken}`);
+      let order = hist.body.orders.find((o) => o.order_key === '3|0|19');
+      // עוד לא מאומת — ממשיך להיחשב חוסר אמיתי לצורך הגוביינא (5*20=100 ירידה)
+      expect(order.cod_display_amount).toBe(900);
+
+      const confirmRes = await request(app)
+        .post('/api/orders/3%7C0%7C19/items/1/confirm-replace')
+        .set('Authorization', `Bearer ${warehouseToken}`);
+      expect(confirmRes.body.item.replaced_confirmed).toBe(1);
+
+      hist = await request(app).get('/api/history').set('Authorization', `Bearer ${managerToken}`);
+      order = hist.body.orders.find((o) => o.order_key === '3|0|19');
+      expect(order.cod_display_amount).toBe(1000);
     });
 
     it('clearing the replacement note (empty replacedTo) makes the shortage count against COD again', async () => {
@@ -199,13 +234,26 @@ describe('packages count + COD (gvina)', () => {
         INSERT INTO order_items_cache (order_key, line_no, item_code, item_name, quantity, price, pick_status, qty_picked)
         VALUES ('3|0|15', 1, 'A1', 'פריט חסר', 2, 100, 'missing', 0)
       `).run();
-      await request(app).post('/api/orders/3%7C0%7C15/items/1/replace').set('Authorization', `Bearer ${managerToken}`).send({ replacedTo: 'שחור' });
+      await request(app).post('/api/orders/3%7C0%7C15/items/1/replace').set('Authorization', `Bearer ${managerToken}`).send({ replacedTo: 'שחור', replacedQty: 2 });
       await request(app).post('/api/orders/3%7C0%7C15/items/1/replace').set('Authorization', `Bearer ${managerToken}`).send({ replacedTo: '' });
       await request(app).post('/api/orders/3%7C0%7C15/cod').set('Authorization', `Bearer ${managerToken}`).send({ codType: 'full', dueDate: '2026-10-01' });
 
       const hist = await request(app).get('/api/history').set('Authorization', `Bearer ${managerToken}`);
       const order = hist.body.orders.find((o) => o.order_key === '3|0|15');
       expect(order.cod_display_amount).toBe(300);
+    });
+
+    it('POST /items/:lineNo/replace requires a positive quantity', async () => {
+      seedOrder(db, { orderKey: '3|0|17b', orderNum: 176, status: 'ready_for_check' });
+      db.prepare(`
+        INSERT INTO order_items_cache (order_key, line_no, item_code, item_name, quantity, price, pick_status, qty_picked)
+        VALUES ('3|0|17b', 1, 'A1', 'פריט', 1, 10, 'missing', 0)
+      `).run();
+      const res = await request(app)
+        .post('/api/orders/3%7C0%7C17b/items/1/replace')
+        .set('Authorization', `Bearer ${managerToken}`)
+        .send({ replacedTo: 'שחור' });
+      expect(res.status).toBe(400);
     });
 
     it('POST /items/:lineNo/replace is usable by the picker/checker (warehouse), not just a manager', async () => {
@@ -217,9 +265,11 @@ describe('packages count + COD (gvina)', () => {
       const res = await request(app)
         .post('/api/orders/3%7C0%7C16/items/1/replace')
         .set('Authorization', `Bearer ${warehouseToken}`)
-        .send({ replacedTo: 'שחור' });
+        .send({ replacedTo: 'שחור', replacedQty: 1 });
       expect(res.status).toBe(200);
       expect(res.body.item.replaced_to).toBe('שחור');
+      // בשלב הבדיקה (ready_for_check) גם warehouse נחשב מאומת מיד — הרי רק הבודק פועל בשלב הזה
+      expect(res.body.item.replaced_confirmed).toBe(1);
     });
 
     it('POST /items/:lineNo/replace rejects an agent (role gate)', async () => {
@@ -231,7 +281,7 @@ describe('packages count + COD (gvina)', () => {
       const res = await request(app)
         .post('/api/orders/3%7C0%7C18/items/1/replace')
         .set('Authorization', `Bearer ${agentToken}`)
-        .send({ replacedTo: 'שחור' });
+        .send({ replacedTo: 'שחור', replacedQty: 1 });
       expect(res.status).toBe(403);
     });
 

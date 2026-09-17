@@ -97,13 +97,26 @@ export default function History({ user, onOpenOrder }) {
   const COD_LABELS = { none: 'ללא גוביינא', full: 'על סכום ההזמנה', custom: 'סכום אחר', full_plus_extra: 'על ההזמנה + תוספת' };
 
   // "הוחלף צבע" — תיעוד תחליף שהלקוח אישר לפריט חסר (אותו מחיר, SKU/צבע
-  // אחר). לא נכתב לסיגמא — רק תיעוד לעזרה למזכירה ולחישוב הגוביינא. ר' ייעוץ 17.9.2026.
-  async function saveReplace(e, order, lineNo, value) {
+  // אחר), עם כמות מפורשת. לא נכתב לסיגמא — רק תיעוד לעזרה למזכירה ולחישוב
+  // הגוביינא. מנהל שקובע את זה מכאן נחשב מאומת מיד (ר' workflow.js
+  // markItemReplaced). ר' ייעוץ 17.9.2026.
+  async function saveReplace(e, order, lineNo, value, qty) {
     e.stopPropagation();
     setBusyKey(order.order_key);
     try {
-      await api.replaceItem(order.order_key, lineNo, value);
+      await api.replaceItem(order.order_key, lineNo, value, qty ? Number(qty) : null);
       setReplaceEdit(null);
+      await load();
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  async function confirmReplaceRow(e, order, lineNo) {
+    e.stopPropagation();
+    setBusyKey(order.order_key);
+    try {
+      await api.confirmReplace(order.order_key, lineNo);
       await load();
     } finally {
       setBusyKey(null);
@@ -142,7 +155,8 @@ export default function History({ user, onOpenOrder }) {
       {filtered.map((o) => {
         const hasShortage = o.shortages && o.shortages.length > 0;
         const invoiced = !!o.shortage_invoiced_at;
-        const replacedCount = hasShortage ? o.shortages.filter((s) => s.replaced_to).length : 0;
+        const replacedConfirmedCount = hasShortage ? o.shortages.filter((s) => s.replaced_to && s.replaced_confirmed).length : 0;
+        const replacedPendingCount = hasShortage ? o.shortages.filter((s) => s.replaced_to && !s.replaced_confirmed).length : 0;
         const needsAttention = hasShortage && !invoiced;
         return (
         <div
@@ -160,7 +174,8 @@ export default function History({ user, onOpenOrder }) {
             {o.issues.length > 0 && <span className="badge status-on_hold">{o.issues.length} בעיות בדרך</span>}
             {needsAttention && <span className="badge status-on_hold">⚠️ {o.shortages.length} מק"טים לשינוי בחשבונית</span>}
             {hasShortage && invoiced && <span className="badge status-closed">✓ טופל</span>}
-            {replacedCount > 0 && <span className="badge status-on_hold">🔄 {replacedCount} הוחלפו</span>}
+            {replacedConfirmedCount > 0 && <span className="badge status-closed">🔄 {replacedConfirmedCount} הוחלפו (מאומת)</span>}
+            {replacedPendingCount > 0 && <span className="badge status-on_hold">⏳ {replacedPendingCount} ממתינים לאימות בודק</span>}
             {o.package_count > 0 && <span className="badge status-closed">📦 {o.package_count} חבילות</span>}
             {o.pallet_count > 0 && <span className="badge status-closed">🟫 {o.pallet_count} משטחים</span>}
           </div>
@@ -227,20 +242,37 @@ export default function History({ user, onOpenOrder }) {
                         {replaceEdit === editKey ? (
                           <span style={{ display: 'flex', gap: 4 }}>
                             <input
-                              autoFocus className="text-input" style={{ padding: '3px 6px', width: 90 }}
+                              type="number" min="1" className="text-input" style={{ padding: '3px 6px', width: 44 }}
+                              defaultValue={s.replaced_qty ?? Math.max(0, s.qty_ordered - s.qty_picked) ?? ''}
+                              id={`replace-qty-${editKey}`}
+                            />
+                            <input
+                              autoFocus className="text-input" style={{ padding: '3px 6px', width: 70 }}
                               defaultValue={s.replaced_to || ''}
-                              onKeyDown={(e) => { if (e.key === 'Enter') saveReplace(e, o, s.line_no, e.target.value); }}
+                              onKeyDown={(e) => { if (e.key === 'Enter') saveReplace(e, o, s.line_no, e.target.value, document.getElementById(`replace-qty-${editKey}`).value); }}
                               id={`replace-${editKey}`}
                             />
                             <button
                               className="action-btn small" style={{ flex: '0 0 auto', padding: '3px 8px' }}
                               disabled={busyKey === o.order_key}
-                              onClick={(e) => saveReplace(e, o, s.line_no, document.getElementById(`replace-${editKey}`).value)}
+                              onClick={(e) => saveReplace(e, o, s.line_no, document.getElementById(`replace-${editKey}`).value, document.getElementById(`replace-qty-${editKey}`).value)}
                             >✓</button>
                           </span>
                         ) : s.replaced_to ? (
-                          <span className="replaced-note" onClick={(e) => { e.stopPropagation(); setReplaceEdit(editKey); }}>
-                            🔄 {s.replaced_to}
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+                            <span
+                              className={'replaced-note' + (s.replaced_confirmed ? '' : ' pending')}
+                              onClick={(e) => { e.stopPropagation(); setReplaceEdit(editKey); }}
+                            >
+                              🔄 {s.replaced_qty} יח&#39; {s.replaced_to}{s.replaced_confirmed ? '' : ' · ממתין לאימות'}
+                            </span>
+                            {!s.replaced_confirmed && (
+                              <button
+                                className="action-btn small" style={{ flex: '0 0 auto', padding: '3px 8px' }}
+                                disabled={busyKey === o.order_key}
+                                onClick={(e) => confirmReplaceRow(e, o, s.line_no)}
+                              >✓ אשר</button>
+                            )}
                           </span>
                         ) : (
                           <button className="action-btn secondary small" onClick={(e) => { e.stopPropagation(); setReplaceEdit(editKey); }}>

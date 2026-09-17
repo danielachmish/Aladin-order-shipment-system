@@ -516,9 +516,11 @@ function updateOrderSettings(orderKey, userId, { codType, amount, dueDate, plann
   return getState(orderKey);
 }
 
-// מחשב את שווי החוסרים בפועל (לא הוחלפו בתחליף) עבור סט הזמנות נתון —
-// (הוזמן - נלקט) * מחיר, רק לשורות עם pick_status חסר/חלקי ובלי replaced_to.
-// החלפת צבע (replaced_to מלא) לא מורידה כלום — אותו פריט, אותו מחיר (ר' בקשת דניאל 17.9.2026).
+// מחשב את שווי החוסרים בפועל (בלי תחליף מאומת) עבור סט הזמנות נתון —
+// (הוזמן - נלקט) * מחיר, רק לשורות עם pick_status חסר/חלקי. תחליף שהמלקט
+// הזין אבל הבודק עוד לא אימת (replaced_confirmed=0) עדיין נחשב חוסר לצורך
+// הגוביינא — לא רוצים לזכות את הלקוח לפני שהתחליף אומת בפועל כנכון (כמות
+// ופריט). רק תחליף מאומת לא מוריד כלום — אותו פריט, אותו מחיר (ר' ייעוץ 17.9.2026).
 function computeShortageValue(orderKeys) {
   if (orderKeys.length === 0) return 0;
   const placeholders = orderKeys.map(() => '?').join(',');
@@ -527,7 +529,7 @@ function computeShortageValue(orderKeys) {
     FROM order_items_cache
     WHERE order_key IN (${placeholders})
       AND pick_status IN ('missing', 'partial')
-      AND (replaced_to IS NULL OR TRIM(replaced_to) = '')
+      AND NOT (replaced_confirmed = 1 AND replaced_to IS NOT NULL AND TRIM(replaced_to) != '')
   `).all(...orderKeys);
   let value = 0;
   for (const r of rows) {
@@ -540,7 +542,7 @@ function computeShortageValue(orderKeys) {
 // מחשב את סכום הגוביינא בפועל להצגה: full/full_plus_extra מסתכמים על כל
 // ההזמנות בקבוצה המקושרת (משלוח פיזי אחד), לא רק ההזמנה הבודדת. הסכום
 // יורד לפי מה שבאמת סופק (נלקט ואושר) — חוסר אמיתי מוריד משווי הפריט,
-// החלפת צבע (ר' markItemReplaced) לא משנה כלום (בקשת דניאל 17.9.2026).
+// החלפת צבע *מאומתת ע"י בודק* (ר' markItemReplaced) לא משנה כלום (בקשת דניאל 17.9.2026).
 function computeCodDisplay(orderKey) {
   const state = getState(orderKey);
   if (!state || state.cod_type === 'none') return 0;
@@ -566,25 +568,56 @@ function computeCodDisplay(orderKey) {
   return state.cod_type === 'full_plus_extra' ? suppliedTotal + (state.cod_amount || 0) : suppliedTotal;
 }
 
-// "הוחלף צבע" — לקוח אישר תחליף לפריט חסר (SKU/צבע אחר, אותו מחיר). זמין
-// למלקט/בודק ברגע שמסמנים שורה כחסרה/חלקית (לא רק למנהל בהיסטוריה אחר כך —
-// ר' בקשת דניאל 17.9.2026), וגם למנהל בהיסטוריה. תיעוד בלבד בתוך Aladin,
-// לא נכתב לסיגמא — מי שמעדכן את השורה בפועל בסיגמא נעזר בהערה הזו. מחיקת
-// ההערה (replacedTo ריק) מחזירה את הפריט להיחשב "חוסר אמיתי" לצורך הגוביינא.
-function markItemReplaced(orderKey, lineNo, userId, replacedTo) {
+// "הוחלף צבע" — לקוח אישר תחליף לפריט חסר (SKU/צבע אחר, אותו מחיר), עם כמות
+// מפורשת (לא רק תיאור חופשי — כדי שההוראה למזכירה תהיה חד-משמעית: "X יח' Y").
+// זמין למלקט/בודק ברגע שמסמנים שורה כחסרה/חלקית, וגם למנהל בהיסטוריה.
+// תיעוד בלבד בתוך Aladin, לא נכתב לסיגמא. ר' בקשת דניאל 17.9.2026: "צריך
+// לוודא שאכן הביא את הדבר הנכון" — לכן זו לא הוראה סופית עד שבודק מאמת:
+// מנהל (מההיסטוריה) או מי שמגדיר את זה כשההזמנה כבר בשלב בדיקה = מאומת
+// מיד; מלקט שמגדיר זאת בשלב הליקוט = ממתין לאימות הבודק (replaced_confirmed=0),
+// ורק תחליף מאומת נחשב "לא חוסר" בחישוב הגוביינא (ר' computeShortageValue).
+function markItemReplaced(orderKey, lineNo, userId, userRole, replacedTo, replacedQty) {
   const state = getState(orderKey);
   if (!state) throw new RuleError('הזמנה לא נמצאה');
   const item = db.prepare('SELECT * FROM order_items_cache WHERE order_key = ? AND line_no = ?').get(orderKey, lineNo);
   if (!item) throw new RuleError('פריט לא נמצא');
   const value = (replacedTo || '').trim() || null;
+  if (value && !(Number(replacedQty) > 0)) throw new RuleError('יש להזין כמות תחליף תקינה');
+  const qty = value ? Number(replacedQty) : null;
+  const confirmed = value && (userRole === 'warehouse_manager' || userRole === 'system_admin' || state.status === 'ready_for_check') ? 1 : 0;
   const tx = db.transaction(() => {
-    db.prepare('UPDATE order_items_cache SET replaced_to = ? WHERE order_key = ? AND line_no = ?').run(value, orderKey, lineNo);
+    db.prepare('UPDATE order_items_cache SET replaced_to = ?, replaced_qty = ?, replaced_confirmed = ? WHERE order_key = ? AND line_no = ?')
+      .run(value, qty, confirmed, orderKey, lineNo);
     db.prepare(`UPDATE workflow_state SET version = version + 1, updated_at = datetime('now') WHERE order_key = ?`).run(orderKey);
     db.prepare(`
       INSERT INTO workflow_events (event_id, order_key, user_id, from_status, to_status, note)
       VALUES (?, ?, ?, ?, ?, ?)
     `).run(uid('evt'), orderKey, userId, state.status, state.status,
-      value ? `פריט ${item.item_code} הוחלף ל: ${value}` : `בוטלה החלפת פריט ${item.item_code}`);
+      value
+        ? `פריט ${item.item_code} הוחלף ל: ${qty} יח' ${value}${confirmed ? ' (מאומת)' : ' (ממתין לאימות בודק)'}`
+        : `בוטלה החלפת פריט ${item.item_code}`);
+  });
+  tx();
+  emitChange('order', { order_key: orderKey, status: state.status, version: state.version });
+  return db.prepare('SELECT * FROM order_items_cache WHERE order_key = ? AND line_no = ?').get(orderKey, lineNo);
+}
+
+// הבודק מאשר תחליף שהמלקט כבר הזין, בלי לערוך אותו מחדש — ר' בקשת דניאל
+// 17.9.2026 ("הבודק צריך לאשר וגם את הכמות").
+function confirmItemReplacement(orderKey, lineNo, userId) {
+  const state = getState(orderKey);
+  if (!state) throw new RuleError('הזמנה לא נמצאה');
+  const item = db.prepare('SELECT * FROM order_items_cache WHERE order_key = ? AND line_no = ?').get(orderKey, lineNo);
+  if (!item) throw new RuleError('פריט לא נמצא');
+  if (!item.replaced_to) throw new RuleError('אין תחליף לאשר על השורה הזו');
+  const tx = db.transaction(() => {
+    db.prepare('UPDATE order_items_cache SET replaced_confirmed = 1 WHERE order_key = ? AND line_no = ?').run(orderKey, lineNo);
+    db.prepare(`UPDATE workflow_state SET version = version + 1, updated_at = datetime('now') WHERE order_key = ?`).run(orderKey);
+    db.prepare(`
+      INSERT INTO workflow_events (event_id, order_key, user_id, from_status, to_status, note)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(uid('evt'), orderKey, userId, state.status, state.status,
+      `בודק אימת החלפת פריט ${item.item_code}: ${item.replaced_qty} יח' ${item.replaced_to}`);
   });
   tx();
   emitChange('order', { order_key: orderKey, status: state.status, version: state.version });
@@ -713,5 +746,5 @@ module.exports = {
   linkOrders, unlinkOrder,
   updateOrderSettings, computeCodDisplay,
   listShortedItems, clearShortedItem,
-  markItemReplaced,
+  markItemReplaced, confirmItemReplacement,
 };

@@ -21,6 +21,7 @@ export default function PickChecklist({ mode, order, items, onItemUpdated, busy,
   const [editNote, setEditNote] = useState('');
   const [replaceLine, setReplaceLine] = useState(null);
   const [replaceText, setReplaceText] = useState('');
+  const [replaceQty, setReplaceQty] = useState('');
 
   // תיקון (17.9.2026, בקשת דניאל): לחיצה על שורה בליקוט/בדיקה גרמה לרענון
   // מלא של כל ההזמנה (GET נוסף עם כל השורות/אירועים/משלוחים) על כל לחיצה,
@@ -54,15 +55,32 @@ export default function PickChecklist({ mode, order, items, onItemUpdated, busy,
     }
   }
 
-  // "הוחלף צבע" — הלקוח אישר תחליף (SKU/צבע אחר, אותו מחיר) לפריט חסר.
-  // זמין למלקט וגם לבודק ברגע שמסמנים שורה כחסרה/חלקית — לא רק למנהל
-  // בהיסטוריה אחר כך (בקשת דניאל 17.9.2026). לא נכתב לסיגמא, תיעוד בלבד.
-  async function saveReplace(item, replacedTo) {
+  // "הוחלף צבע" — הלקוח אישר תחליף (SKU/צבע אחר, אותו מחיר) לפריט חסר, עם
+  // כמות מפורשת כדי שההוראה למזכירה תהיה חד-משמעית ("X יח' Y"). זמין למלקט
+  // וגם לבודק ברגע שמסמנים שורה כחסרה/חלקית — לא רק למנהל בהיסטוריה אחר כך
+  // (בקשת דניאל 17.9.2026). לא נכתב לסיגמא, תיעוד בלבד. אם המלקט מזין את
+  // זה בשלב הליקוט זה נשאר "ממתין לאימות בודק" עד שהבודק בפועל מאשר (ר'
+  // confirmReplace) — כדי לוודא שהתחליף (פריט+כמות) באמת נכון לפני שזה
+  // משפיע על חישוב הגוביינא.
+  async function saveReplace(item, replacedTo, replacedQty) {
     setBusy(true);
     setError('');
     try {
-      const res = await api.replaceItem(order.order_key, item.line_no, replacedTo);
+      const res = await api.replaceItem(order.order_key, item.line_no, replacedTo, replacedQty ? Number(replacedQty) : null);
       setReplaceLine(null);
+      onItemUpdated(res.item);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function confirmReplace(item) {
+    setBusy(true);
+    setError('');
+    try {
+      const res = await api.confirmReplace(order.order_key, item.line_no);
       onItemUpdated(res.item);
     } catch (e) {
       setError(e.message);
@@ -97,27 +115,41 @@ export default function PickChecklist({ mode, order, items, onItemUpdated, busy,
         const rowDoneClass = mode === 'pick'
           ? ((it.pick_status === 'picked' || it.pick_status === 'partial') ? ' done' : '')
           : (it.checked ? ' checked' : '');
+        const shortfall = Math.max(0, (it.quantity || 0) - (it.qty_picked || 0));
         const replaceBlock = isShortage && (
           replaceLine === it.line_no ? (
             <div className="btn-row" onClick={(e) => e.stopPropagation()}>
               <input
-                autoFocus className="text-input" style={{ flex: '1 1 140px' }}
+                type="number" min="1" className="text-input" style={{ flex: '0 0 64px' }}
+                placeholder="כמות" value={replaceQty} onChange={(e) => setReplaceQty(e.target.value)}
+              />
+              <input
+                autoFocus className="text-input" style={{ flex: '1 1 120px' }}
                 placeholder="לאיזה צבע/פריט הוחלף?"
                 value={replaceText} onChange={(e) => setReplaceText(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') saveReplace(it, replaceText); }}
+                onKeyDown={(e) => { if (e.key === 'Enter') saveReplace(it, replaceText, replaceQty); }}
               />
-              <button className="action-btn small" disabled={busy} onClick={() => saveReplace(it, replaceText)}>שמירה</button>
+              <button className="action-btn small" disabled={busy} onClick={() => saveReplace(it, replaceText, replaceQty)}>שמירה</button>
               <button className="action-btn secondary small" onClick={() => setReplaceLine(null)}>ביטול</button>
             </div>
           ) : it.replaced_to ? (
-            <div className="btn-row">
-              <span className="replaced-note" onClick={() => { setReplaceLine(it.line_no); setReplaceText(it.replaced_to); }}>
-                🔄 הוחלף ל: {it.replaced_to}
+            <div className="btn-row" style={{ alignItems: 'center' }}>
+              <span
+                className={'replaced-note' + (it.replaced_confirmed ? '' : ' pending')}
+                onClick={() => { setReplaceLine(it.line_no); setReplaceText(it.replaced_to); setReplaceQty(String(it.replaced_qty ?? '')); }}
+              >
+                🔄 {it.replaced_qty} יח&#39; {it.replaced_to}{it.replaced_confirmed ? ' · מאומת' : ' · ממתין לאימות בודק'}
               </span>
+              {!it.replaced_confirmed && mode === 'check' && (
+                <button className="action-btn small" disabled={busy} onClick={() => confirmReplace(it)}>✓ אשר תחליף</button>
+              )}
             </div>
           ) : (
             <div className="btn-row">
-              <button className="action-btn secondary small" disabled={busy} onClick={() => { setReplaceLine(it.line_no); setReplaceText(''); }}>
+              <button
+                className="action-btn secondary small" disabled={busy}
+                onClick={() => { setReplaceLine(it.line_no); setReplaceText(''); setReplaceQty(String(shortfall || it.quantity || 1)); }}
+              >
                 🔄 הוחלף צבע
               </button>
             </div>
