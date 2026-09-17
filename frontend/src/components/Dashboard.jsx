@@ -54,7 +54,7 @@ export default function Dashboard({ user, onOpenOrder }) {
   useEffect(() => {
     load();
     const off = onLive((evt) => {
-      if (['order', 'urgent_request', 'shipment'].includes(evt.type)) load();
+      if (['order', 'urgent_request', 'shipment', '__connected'].includes(evt.type)) load();
     });
     return off;
   }, []);

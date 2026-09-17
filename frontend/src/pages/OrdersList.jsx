@@ -49,7 +49,7 @@ export default function OrdersList({ user, onOpenOrder }) {
   useEffect(() => {
     load();
     const off = onLive((evt) => {
-      if (evt.type === 'order' || evt.type === 'urgent_request' || evt.type === 'shipment' || evt.type === 'settings') load();
+      if (['order', 'urgent_request', 'shipment', 'settings', '__connected'].includes(evt.type)) load();
     });
     return off;
   }, []);

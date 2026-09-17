@@ -19,7 +19,7 @@ export default function ManagementTools({ user }) {
 
   useEffect(() => {
     load();
-    const off = onLive((evt) => { if (evt.type === 'settings') load(); });
+    const off = onLive((evt) => { if (evt.type === 'settings' || evt.type === '__connected') load(); });
     return off;
   }, []);
 

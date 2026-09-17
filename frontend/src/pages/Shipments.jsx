@@ -20,7 +20,7 @@ export default function Shipments({ onOpenOrder }) {
 
   useEffect(() => {
     load();
-    const off = onLive((evt) => { if (evt.type === 'shipment') load(); });
+    const off = onLive((evt) => { if (evt.type === 'shipment' || evt.type === '__connected') load(); });
     return off;
   }, []);
 

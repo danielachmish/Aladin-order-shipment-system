@@ -37,3 +37,22 @@ export function connectLive() {
     } catch {}
   };
 }
+
+// כשלשונית מוקפאת ברקע (נייד בעיקר) הסוקט מת בצד השרת אבל ה-JS לא תמיד
+// מבחין בזה מיד. כשחוזרים ללשונית — מכריחים ניתוק+חיבור-מחדש, כדי שכל
+// מסך שמאזין ל-__connected ירענן נתונים במקום להציג מצב ישן. ר' בקשת
+// דניאל 17.9.2026 ("צריך לצאת ולהיכנס כדי שזה ימשוך נתונים").
+if (typeof document !== 'undefined') {
+  function onWake() {
+    if (WS_DISABLED) return;
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      socket.close(); // onclose מפעיל reconnect + __disconnected/__connected
+    } else {
+      connectLive();
+    }
+  }
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') onWake();
+  });
+  window.addEventListener('pageshow', (e) => { if (e.persisted) onWake(); });
+}

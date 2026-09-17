@@ -24,7 +24,7 @@ export default function BackInStock() {
 
   useEffect(() => {
     load();
-    const off = onLive((evt) => { if (evt.type === 'order') load(); });
+    const off = onLive((evt) => { if (evt.type === 'order' || evt.type === '__connected') load(); });
     return off;
   }, []);
 

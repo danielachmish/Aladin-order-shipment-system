@@ -30,7 +30,7 @@ export default function InventoryShortages() {
 
   useEffect(() => {
     load();
-    const off = onLive((evt) => { if (evt.type === 'order') load(); });
+    const off = onLive((evt) => { if (evt.type === 'order' || evt.type === '__connected') load(); });
     return off;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [days, view]);
