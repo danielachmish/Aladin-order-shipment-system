@@ -118,25 +118,26 @@ export default function PickChecklist({ mode, order, items, onItemUpdated, busy,
         const shortfall = Math.max(0, (it.quantity || 0) - (it.qty_picked || 0));
         const replaceBlock = isShortage && (
           replaceLine === it.line_no ? (
-            <div className="btn-row" onClick={(e) => e.stopPropagation()}>
+            <div className="pick-edit-row" onClick={(e) => e.stopPropagation()}>
               <input
-                type="number" min="1" className="text-input" style={{ flex: '0 0 64px' }}
-                placeholder="כמות" value={replaceQty} onChange={(e) => setReplaceQty(e.target.value)}
+                type="number" min="1" value={replaceQty} onChange={(e) => setReplaceQty(e.target.value)}
+                placeholder="כמות התחליף"
               />
               <input
-                autoFocus className="text-input" style={{ flex: '1 1 120px' }}
+                autoFocus value={replaceText} onChange={(e) => setReplaceText(e.target.value)}
                 placeholder="לאיזה צבע/פריט הוחלף?"
-                value={replaceText} onChange={(e) => setReplaceText(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') saveReplace(it, replaceText, replaceQty); }}
               />
-              <button className="action-btn small" disabled={busy} onClick={() => saveReplace(it, replaceText, replaceQty)}>שמירה</button>
-              <button className="action-btn secondary small" onClick={() => setReplaceLine(null)}>ביטול</button>
+              <div className="btn-row">
+                <button className="action-btn small" disabled={busy} onClick={() => saveReplace(it, replaceText, replaceQty)}>שמירה</button>
+                <button className="action-btn secondary small" onClick={() => setReplaceLine(null)}>ביטול</button>
+              </div>
             </div>
           ) : it.replaced_to ? (
             <div className="btn-row" style={{ alignItems: 'center' }}>
               <span
                 className={'replaced-note' + (it.replaced_confirmed ? '' : ' pending')}
-                onClick={() => { setReplaceLine(it.line_no); setReplaceText(it.replaced_to); setReplaceQty(String(it.replaced_qty ?? '')); }}
+                onClick={() => { setEditingLine(null); setReplaceLine(it.line_no); setReplaceText(it.replaced_to); setReplaceQty(String(it.replaced_qty ?? '')); }}
               >
                 🔄 {it.replaced_qty} יח&#39; {it.replaced_to}{it.replaced_confirmed ? ' · מאומת' : ' · ממתין לאימות בודק'}
               </span>
@@ -148,7 +149,7 @@ export default function PickChecklist({ mode, order, items, onItemUpdated, busy,
             <div className="btn-row">
               <button
                 className="action-btn secondary small" disabled={busy}
-                onClick={() => { setReplaceLine(it.line_no); setReplaceText(''); setReplaceQty(String(shortfall || it.quantity || 1)); }}
+                onClick={() => { setEditingLine(null); setReplaceLine(it.line_no); setReplaceText(''); setReplaceQty(String(shortfall || it.quantity || 1)); }}
               >
                 🔄 הוחלף צבע
               </button>
@@ -206,7 +207,7 @@ export default function PickChecklist({ mode, order, items, onItemUpdated, busy,
                   <div className="btn-row">
                     <button
                       className="action-btn secondary small" disabled={busy}
-                      onClick={() => { setEditingLine(it.line_no); setEditQty(it.qty_picked != null ? String(it.qty_picked) : ''); setEditNote(it.pick_note || ''); }}
+                      onClick={() => { setEditingLine(it.line_no); setReplaceLine(null); setEditQty(it.qty_picked != null ? String(it.qty_picked) : ''); setEditNote(it.pick_note || ''); }}
                     >
                       🔄 תיקון
                     </button>
@@ -216,7 +217,7 @@ export default function PickChecklist({ mode, order, items, onItemUpdated, busy,
                     <button className="action-btn" disabled={busy} onClick={() => markPicked(it, 'picked', it.quantity, null)}>✓ ליקטתי הכל</button>
                     <button
                       className="action-btn secondary" disabled={busy}
-                      onClick={() => { setEditingLine(it.line_no); setEditQty(it.qty_picked != null ? String(it.qty_picked) : ''); setEditNote(it.pick_note || ''); }}
+                      onClick={() => { setEditingLine(it.line_no); setReplaceLine(null); setEditQty(it.qty_picked != null ? String(it.qty_picked) : ''); setEditNote(it.pick_note || ''); }}
                     >
                       כמות אחרת / חסר
                     </button>
@@ -262,7 +263,7 @@ export default function PickChecklist({ mode, order, items, onItemUpdated, busy,
                   <div className="btn-row">
                     <button
                       className="action-btn secondary" disabled={busy}
-                      onClick={() => { setEditingLine(it.line_no); setEditQty(String(it.quantity)); setEditNote(''); }}
+                      onClick={() => { setEditingLine(it.line_no); setReplaceLine(null); setEditQty(String(it.quantity)); setEditNote(''); }}
                     >
                       תיקון — בעצם כן נמצא
                     </button>
@@ -272,7 +273,7 @@ export default function PickChecklist({ mode, order, items, onItemUpdated, busy,
                     <div className="meta pick-status-line picked">✓ מאושר{it.check_note ? ` · ${it.check_note}` : ''}</div>
                     <button
                       className="action-btn secondary" disabled={busy}
-                      onClick={() => { setEditingLine(it.line_no); setEditQty(it.qty_picked != null ? String(it.qty_picked) : ''); setEditNote(''); }}
+                      onClick={() => { setEditingLine(it.line_no); setReplaceLine(null); setEditQty(it.qty_picked != null ? String(it.qty_picked) : ''); setEditNote(''); }}
                     >
                       תיקון
                     </button>
@@ -282,7 +283,7 @@ export default function PickChecklist({ mode, order, items, onItemUpdated, busy,
                     <button className="action-btn" disabled={busy} onClick={() => markChecked(it, true, null)}>✓ מאשר</button>
                     <button
                       className="action-btn secondary" disabled={busy}
-                      onClick={() => { setEditingLine(it.line_no); setEditQty(it.qty_picked != null ? String(it.qty_picked) : ''); setEditNote(''); }}
+                      onClick={() => { setEditingLine(it.line_no); setReplaceLine(null); setEditQty(it.qty_picked != null ? String(it.qty_picked) : ''); setEditNote(''); }}
                     >
                       תיקון
                     </button>
