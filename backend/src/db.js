@@ -50,5 +50,6 @@ ensureColumn('item_shortage_status', 'woocommerce_status', 'TEXT');
 ensureColumn('item_shortage_status', 'woocommerce_detail', 'TEXT');
 ensureColumn('workflow_state', 'planned_delivery_method', 'TEXT');
 ensureColumn('workflow_state', 'special_instructions', 'TEXT');
+ensureColumn('order_items_cache', 'replaced_to', 'TEXT');
 
 module.exports = { db, isNew };

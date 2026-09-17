@@ -64,6 +64,7 @@ CREATE TABLE IF NOT EXISTS order_items_cache (
   check_note  TEXT,    -- הערת בודק אם תיקן משהו
   pick_marked_at TEXT, -- מתי סומן pick_status לאחרונה (מלקט או תיקון בודק) — לדוח "חוסרי מלאי היום"
   auto_missing INTEGER NOT NULL DEFAULT 0, -- 1 = סומן אוטומטית "חסר" כי אומת כחוסר בהזמנה אחרת (ר' item_shortage_status), לא ע"י המלקט עצמו
+  replaced_to TEXT, -- לקוח אישר תחליף (למשל צבע אחר) לפריט חסר — טקסט חופשי, לא נכתב לסיגמא (ר' ייעוץ 17.9.2026)
   PRIMARY KEY (order_key, line_no)
 );
 

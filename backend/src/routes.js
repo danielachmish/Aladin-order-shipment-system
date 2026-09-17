@@ -609,7 +609,7 @@ router.get('/history', requireRole('warehouse', 'warehouse_manager', 'system_adm
   const userStmt = db.prepare(`SELECT display_name FROM users WHERE user_id = ?`);
   // דוח חוסרים למזכירה — ר' PICKING_QC_SPEC.md סעיף 5.3 (סוכם עם דניאל 14.9.2026)
   const shortagesStmt = db.prepare(`
-    SELECT item_code, item_name, quantity AS qty_ordered, qty_picked, pick_status, pick_note, check_note
+    SELECT line_no, item_code, item_name, quantity AS qty_ordered, qty_picked, pick_status, pick_note, check_note, replaced_to
     FROM order_items_cache
     WHERE order_key = ? AND pick_status IN ('missing', 'partial')
     ORDER BY line_no
@@ -642,6 +642,19 @@ router.post('/orders/:key/mark-shortage-invoiced', requireRole('warehouse_manage
 
 router.post('/orders/:key/unmark-shortage-invoiced', requireRole('warehouse_manager', 'system_admin'),
   handleWorkflowAction((key, req) => wf.unmarkShortageInvoiced(key, req.user.id)));
+
+// "הוחלף צבע" — תיעוד תחליף שהלקוח אישר לפריט חסר (ר' ייעוץ 17.9.2026).
+// תיעוד בלבד בתוך Aladin, לא נכתב לסיגמא. replacedTo ריק/חסר = מבטל את הסימון.
+router.post('/orders/:key/items/:lineNo/replace', requireRole('warehouse_manager', 'system_admin'), (req, res) => {
+  try {
+    const key = decodeURIComponent(req.params.key);
+    const lineNo = Number(req.params.lineNo);
+    const state = wf.markItemReplaced(key, lineNo, req.user.id, req.body?.replacedTo);
+    res.json({ ok: true, state });
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message });
+  }
+});
 
 // גוביינא (שיק דחוי) — ר' ייעוץ 17.9.2026. המזכירה בלבד (warehouse_manager/system_admin).
 router.post('/orders/:key/cod', requireRole('warehouse_manager', 'system_admin'),

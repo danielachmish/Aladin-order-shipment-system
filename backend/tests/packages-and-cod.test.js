@@ -157,6 +157,87 @@ describe('packages count + COD (gvina)', () => {
       expect(order11.cod_due_date).toBe('2026-10-05');
     });
 
+    it('a real shortage (not replaced) lowers the "full" COD amount to what was actually supplied', async () => {
+      seedOrder(db, { orderKey: '3|0|13', orderNum: 13, status: 'ready_for_check' });
+      db.prepare(`UPDATE orders_cache SET total_amount = 1000 WHERE order_key = '3|0|13'`).run();
+      db.prepare(`
+        INSERT INTO order_items_cache (order_key, line_no, item_code, item_name, quantity, price, pick_status, qty_picked)
+        VALUES ('3|0|13', 1, 'A1', 'פריט חסר', 5, 20, 'partial', 2)
+      `).run(); // 3 יחידות חסרות * 20 = 60 ירידה
+
+      await request(app).post('/api/orders/3%7C0%7C13/cod').set('Authorization', `Bearer ${managerToken}`).send({ codType: 'full', dueDate: '2026-10-01' });
+
+      const hist = await request(app).get('/api/history').set('Authorization', `Bearer ${managerToken}`);
+      const order = hist.body.orders.find((o) => o.order_key === '3|0|13');
+      expect(order.cod_display_amount).toBe(940);
+    });
+
+    it('a color-replaced item does not lower the COD amount (same price, same item)', async () => {
+      seedOrder(db, { orderKey: '3|0|14', orderNum: 14, status: 'ready_for_check' });
+      db.prepare(`UPDATE orders_cache SET total_amount = 1000 WHERE order_key = '3|0|14'`).run();
+      db.prepare(`
+        INSERT INTO order_items_cache (order_key, line_no, item_code, item_name, quantity, price, pick_status, qty_picked)
+        VALUES ('3|0|14', 1, 'A1', 'פריט חסר', 5, 20, 'missing', 0)
+      `).run();
+      await request(app).post('/api/orders/3%7C0%7C14/items/1/replace').set('Authorization', `Bearer ${managerToken}`).send({ replacedTo: 'הוחלף לשחור' });
+
+      await request(app).post('/api/orders/3%7C0%7C14/cod').set('Authorization', `Bearer ${managerToken}`).send({ codType: 'full', dueDate: '2026-10-01' });
+
+      const hist = await request(app).get('/api/history').set('Authorization', `Bearer ${managerToken}`);
+      const order = hist.body.orders.find((o) => o.order_key === '3|0|14');
+      expect(order.cod_display_amount).toBe(1000);
+      const shortage = order.shortages.find((s) => s.line_no === 1);
+      expect(shortage.replaced_to).toBe('הוחלף לשחור');
+    });
+
+    it('clearing the replacement note (empty replacedTo) makes the shortage count against COD again', async () => {
+      seedOrder(db, { orderKey: '3|0|15', orderNum: 15, status: 'ready_for_check' });
+      db.prepare(`UPDATE orders_cache SET total_amount = 500 WHERE order_key = '3|0|15'`).run();
+      db.prepare(`
+        INSERT INTO order_items_cache (order_key, line_no, item_code, item_name, quantity, price, pick_status, qty_picked)
+        VALUES ('3|0|15', 1, 'A1', 'פריט חסר', 2, 100, 'missing', 0)
+      `).run();
+      await request(app).post('/api/orders/3%7C0%7C15/items/1/replace').set('Authorization', `Bearer ${managerToken}`).send({ replacedTo: 'שחור' });
+      await request(app).post('/api/orders/3%7C0%7C15/items/1/replace').set('Authorization', `Bearer ${managerToken}`).send({ replacedTo: '' });
+      await request(app).post('/api/orders/3%7C0%7C15/cod').set('Authorization', `Bearer ${managerToken}`).send({ codType: 'full', dueDate: '2026-10-01' });
+
+      const hist = await request(app).get('/api/history').set('Authorization', `Bearer ${managerToken}`);
+      const order = hist.body.orders.find((o) => o.order_key === '3|0|15');
+      expect(order.cod_display_amount).toBe(300);
+    });
+
+    it('POST /items/:lineNo/replace rejects a non-manager (role gate)', async () => {
+      seedOrder(db, { orderKey: '3|0|16', orderNum: 16, status: 'ready_for_check' });
+      db.prepare(`
+        INSERT INTO order_items_cache (order_key, line_no, item_code, item_name, quantity, price, pick_status, qty_picked)
+        VALUES ('3|0|16', 1, 'A1', 'פריט', 1, 10, 'missing', 0)
+      `).run();
+      const res = await request(app)
+        .post('/api/orders/3%7C0%7C16/items/1/replace')
+        .set('Authorization', `Bearer ${warehouseToken}`)
+        .send({ replacedTo: 'שחור' });
+      expect(res.status).toBe(403);
+    });
+
+    // היסטוריה: כל הזמנה, גם ללא חוסר, צריכה שדה הוצאתי-חשבונית נגיש (marking
+    // עצמאי מהחוסר) — ר' ייעוץ 17.9.2026.
+    it('marks and unmarks an order with no shortages as invoiced (not tied to a shortage)', async () => {
+      seedOrder(db, { orderKey: '3|0|17', orderNum: 17, status: 'closed' });
+
+      const mark = await request(app).post('/api/orders/3%7C0%7C17/mark-shortage-invoiced').set('Authorization', `Bearer ${managerToken}`);
+      expect(mark.status).toBe(200);
+
+      let hist = await request(app).get('/api/history').set('Authorization', `Bearer ${managerToken}`);
+      let order = hist.body.orders.find((o) => o.order_key === '3|0|17');
+      expect(order.shortage_invoiced_at).not.toBeNull();
+      expect(order.shortages).toEqual([]);
+
+      await request(app).post('/api/orders/3%7C0%7C17/unmark-shortage-invoiced').set('Authorization', `Bearer ${managerToken}`);
+      hist = await request(app).get('/api/history').set('Authorization', `Bearer ${managerToken}`);
+      order = hist.body.orders.find((o) => o.order_key === '3|0|17');
+      expect(order.shortage_invoiced_at).toBeNull();
+    });
+
     it('"none" clears any previously set COD', async () => {
       seedOrder(db, { orderKey: '3|0|12', orderNum: 12, status: 'ready_to_pack' });
       db.prepare(`UPDATE orders_cache SET total_amount = 500 WHERE order_key = '3|0|12'`).run();

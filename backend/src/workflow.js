@@ -516,22 +516,77 @@ function updateOrderSettings(orderKey, userId, { codType, amount, dueDate, plann
   return getState(orderKey);
 }
 
+// מחשב את שווי החוסרים בפועל (לא הוחלפו בתחליף) עבור סט הזמנות נתון —
+// (הוזמן - נלקט) * מחיר, רק לשורות עם pick_status חסר/חלקי ובלי replaced_to.
+// החלפת צבע (replaced_to מלא) לא מורידה כלום — אותו פריט, אותו מחיר (ר' בקשת דניאל 17.9.2026).
+function computeShortageValue(orderKeys) {
+  if (orderKeys.length === 0) return 0;
+  const placeholders = orderKeys.map(() => '?').join(',');
+  const rows = db.prepare(`
+    SELECT quantity, qty_picked, price
+    FROM order_items_cache
+    WHERE order_key IN (${placeholders})
+      AND pick_status IN ('missing', 'partial')
+      AND (replaced_to IS NULL OR TRIM(replaced_to) = '')
+  `).all(...orderKeys);
+  let value = 0;
+  for (const r of rows) {
+    const shortfall = Math.max(0, (r.quantity || 0) - (r.qty_picked || 0));
+    value += shortfall * (r.price || 0);
+  }
+  return value;
+}
+
 // מחשב את סכום הגוביינא בפועל להצגה: full/full_plus_extra מסתכמים על כל
-// ההזמנות בקבוצה המקושרת (משלוח פיזי אחד), לא רק ההזמנה הבודדת.
+// ההזמנות בקבוצה המקושרת (משלוח פיזי אחד), לא רק ההזמנה הבודדת. הסכום
+// יורד לפי מה שבאמת סופק (נלקט ואושר) — חוסר אמיתי מוריד משווי הפריט,
+// החלפת צבע (ר' markItemReplaced) לא משנה כלום (בקשת דניאל 17.9.2026).
 function computeCodDisplay(orderKey) {
   const state = getState(orderKey);
   if (!state || state.cod_type === 'none') return 0;
   if (state.cod_type === 'custom') return state.cod_amount || 0;
 
-  const totalRow = state.linked_group_id
-    ? db.prepare(`
-        SELECT SUM(oc.total_amount) AS total FROM orders_cache oc
-        JOIN workflow_state ws ON ws.order_key = oc.order_key
-        WHERE ws.linked_group_id = ?
-      `).get(state.linked_group_id)
-    : db.prepare('SELECT total_amount AS total FROM orders_cache WHERE order_key = ?').get(orderKey);
-  const groupTotal = totalRow?.total || 0;
-  return state.cod_type === 'full_plus_extra' ? groupTotal + (state.cod_amount || 0) : groupTotal;
+  let orderKeys;
+  let groupTotal;
+  if (state.linked_group_id) {
+    const rows = db.prepare(`
+      SELECT oc.order_key, oc.total_amount FROM orders_cache oc
+      JOIN workflow_state ws ON ws.order_key = oc.order_key
+      WHERE ws.linked_group_id = ?
+    `).all(state.linked_group_id);
+    orderKeys = rows.map((r) => r.order_key);
+    groupTotal = rows.reduce((sum, r) => sum + (r.total_amount || 0), 0);
+  } else {
+    const row = db.prepare('SELECT total_amount AS total FROM orders_cache WHERE order_key = ?').get(orderKey);
+    orderKeys = [orderKey];
+    groupTotal = row?.total || 0;
+  }
+
+  const suppliedTotal = Math.max(0, groupTotal - computeShortageValue(orderKeys));
+  return state.cod_type === 'full_plus_extra' ? suppliedTotal + (state.cod_amount || 0) : suppliedTotal;
+}
+
+// "הוחלף צבע" — לקוח אישר תחליף לפריט חסר (SKU/צבע אחר, אותו מחיר). תיעוד
+// בלבד בתוך Aladin, לא נכתב לסיגמא — מי שמעדכן את השורה בפועל בסיגמא נעזר
+// בהערה הזו. מוחק את ההערה (replacedTo ריק) מחזיר את הפריט להיחשב "חוסר
+// אמיתי" לצורך חישוב הגוביינא. ר' ייעוץ 17.9.2026.
+function markItemReplaced(orderKey, lineNo, userId, replacedTo) {
+  const state = getState(orderKey);
+  if (!state) throw new RuleError('הזמנה לא נמצאה');
+  const item = db.prepare('SELECT * FROM order_items_cache WHERE order_key = ? AND line_no = ?').get(orderKey, lineNo);
+  if (!item) throw new RuleError('פריט לא נמצא');
+  const value = (replacedTo || '').trim() || null;
+  const tx = db.transaction(() => {
+    db.prepare('UPDATE order_items_cache SET replaced_to = ? WHERE order_key = ? AND line_no = ?').run(value, orderKey, lineNo);
+    db.prepare(`UPDATE workflow_state SET version = version + 1, updated_at = datetime('now') WHERE order_key = ?`).run(orderKey);
+    db.prepare(`
+      INSERT INTO workflow_events (event_id, order_key, user_id, from_status, to_status, note)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(uid('evt'), orderKey, userId, state.status, state.status,
+      value ? `פריט ${item.item_code} הוחלף ל: ${value}` : `בוטלה החלפת פריט ${item.item_code}`);
+  });
+  tx();
+  return getState(orderKey);
 }
 
 // דוח חוסרים למזכירה (בקשת דניאל 14.9.2026): מזכירה (יוזר warehouse_manager)
@@ -656,4 +711,5 @@ module.exports = {
   linkOrders, unlinkOrder,
   updateOrderSettings, computeCodDisplay,
   listShortedItems, clearShortedItem,
+  markItemReplaced,
 };

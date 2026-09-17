@@ -95,6 +95,7 @@ export const api = {
   setCod: (key, { codType, amount, dueDate }) => request(`/orders/${encodeURIComponent(key)}/cod`, { method: 'POST', body: JSON.stringify({ codType, amount, dueDate }) }),
   orderSettings: (key, data) => request(`/orders/${encodeURIComponent(key)}/settings`, { method: 'POST', body: JSON.stringify(data) }),
   unmarkShortageInvoiced: (key) => request(`/orders/${encodeURIComponent(key)}/unmark-shortage-invoiced`, { method: 'POST', body: JSON.stringify({}) }),
+  replaceItem: (key, lineNo, replacedTo) => request(`/orders/${encodeURIComponent(key)}/items/${lineNo}/replace`, { method: 'POST', body: JSON.stringify({ replacedTo }) }),
   inventoryShortages: (params = {}) => {
     const qs = new URLSearchParams(params).toString();
     return request('/inventory/shortages' + (qs ? `?${qs}` : ''));
