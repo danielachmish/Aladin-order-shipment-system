@@ -254,6 +254,10 @@ button { font-family: inherit; }
 .action-btn.danger { background: var(--red); }
 .action-btn.warn { background: var(--orange); }
 .action-btn:disabled { opacity: .5; cursor: not-allowed; }
+/* גרסה קומפקטית — לפעולות שורה בתוך כרטיס (למשל שמירה/השבתה/מחיקה ליד
+   משתמש), לא לפעולה הראשית של המסך. ר' בקשת דניאל 17.9.2026: "לא ענקיים" */
+.action-btn.small { display: inline-block; width: auto; flex: 1; padding: 9px 8px; font-size: 13px; margin-top: 0; min-height: unset; border-radius: 8px; }
+.action-btn.small.secondary { border-width: 1px; }
 
 .btn-row { display: flex; gap: 8px; margin-top: 10px; }
 .btn-row .action-btn { margin-top: 0; }

@@ -139,11 +139,11 @@ export default function UserManagement() {
           </div>
 
           <div className="btn-row">
-            <button className="action-btn" disabled={busy} onClick={() => saveUser(u)}>שמירה</button>
-            <button className="action-btn secondary" disabled={busy} onClick={() => toggleActive(u)}>
+            <button className="action-btn small" disabled={busy} onClick={() => saveUser(u)}>שמירה</button>
+            <button className="action-btn secondary small" disabled={busy} onClick={() => toggleActive(u)}>
               {u.is_active ? 'השבתה' : 'הפעלה מחדש'}
             </button>
-            <button className="action-btn danger" disabled={busy} onClick={() => deleteUser(u)}>מחיקה לצמיתות</button>
+            <button className="action-btn danger small" disabled={busy} onClick={() => deleteUser(u)}>מחיקה לצמיתות</button>
           </div>
         </div>
       ))}
