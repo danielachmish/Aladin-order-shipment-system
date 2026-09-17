@@ -36,7 +36,7 @@ export default function ManagementTools({ user }) {
   return (
     <div>
       <div className="settings-card">
-        <div className="settings-card-title">תצוגת הזמנות לסוכנים</div>
+        <div className="settings-card-title">👁️ תצוגת הזמנות לסוכנים</div>
         <div className="toggle-row">
           <span>סוכנים רואים:</span>
           <div className="toggle">
@@ -48,7 +48,7 @@ export default function ManagementTools({ user }) {
 
       {status && (
         <div className="settings-card">
-          <div className="settings-card-title">חיבורים חיצוניים</div>
+          <div className="settings-card-title">🔌 חיבורים חיצוניים</div>
           <div className="admin-list-item">
             <div className="top"><b>Sigma</b>
               <span className={'live-pill ' + (status.sigma.bridgeConfigured ? 'on' : 'off')} style={{ margin: 0 }}>
@@ -80,7 +80,7 @@ export default function ManagementTools({ user }) {
       {user && user.role === 'system_admin' && <WooCommerceSettings />}
 
       <div className="settings-card">
-        <div className="settings-card-title">משתמשים</div>
+        <div className="settings-card-title">👥 משתמשים</div>
         <UserManagement />
       </div>
     </div>
@@ -88,8 +88,9 @@ export default function ManagementTools({ user }) {
 }
 
 // חיבור לאתר המכירות (WooCommerce) — למנהל מערכת בלבד (בקשת דניאל 16.9.2026).
-// קריאה-בלבד: המערכת לא סוגרת/פותחת מוצרים אוטומטית, רק שולפת סטטוס להצגה
-// למנהל מחסן. הסודות עצמם לא חוזרים גלויים מה-GET, רק ממוסכים.
+// עדכון 17.9.2026: המערכת כן סוגרת מוצר אוטומטית (stock_status=outofstock)
+// ברגע שבודק QC מאשר סופית שהפריט חסר — אבל פתיחה מחדש נשארת תמיד ידנית
+// (מחירים יכולים להשתנות בינתיים). הסודות עצמם לא חוזרים גלויים מה-GET.
 function WooCommerceSettings() {
   const [settings, setSettings] = useState(null);
   const [storeUrl, setStoreUrl] = useState('');
@@ -135,20 +136,22 @@ function WooCommerceSettings() {
 
   return (
     <div className="settings-card">
-      <div className="settings-card-title">חיבור לאתר המכירות (WooCommerce)</div>
-      <div className="meta" style={{ marginBottom: 8 }}>
-        קריאה בלבד — משמש להצגת סטטוס מוצר למנהל מחסן, לא סוגר/פותח מוצרים אוטומטית.
+      <div className="settings-card-title">🛒 חיבור לאתר המכירות (WooCommerce)</div>
+      <div className="meta" style={{ marginBottom: 12 }}>
+        סוגר אוטומטית מוצר באתר ברגע שבודק QC מאשר סופית שהוא חסר. פתיחה מחדש נשארת תמיד ידנית (מחירים יכולים להשתנות בינתיים).
       </div>
 
-      <div className="actions" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 8 }}>
-        <input placeholder="כתובת החנות: https://shop.example.com" value={storeUrl} onChange={(e) => setStoreUrl(e.target.value)} />
+      <div className="form-stack">
+        <input className="text-input" placeholder="כתובת החנות: https://shop.example.com" value={storeUrl} onChange={(e) => setStoreUrl(e.target.value)} />
         <input
+          className="text-input"
           type="password"
           placeholder={settings?.consumerKeyMasked ? `Consumer Key — שמור: ${settings.consumerKeyMasked} (השאירו ריק ללא שינוי)` : 'Consumer Key (ck_...)'}
           value={consumerKey}
           onChange={(e) => setConsumerKey(e.target.value)}
         />
         <input
+          className="text-input"
           type="password"
           placeholder={settings?.consumerSecretMasked ? `Consumer Secret — שמור: ${settings.consumerSecretMasked} (השאירו ריק ללא שינוי)` : 'Consumer Secret (cs_...)'}
           value={consumerSecret}
@@ -156,20 +159,20 @@ function WooCommerceSettings() {
         />
       </div>
 
-      <div className="toggle-row">
-        <button className="btn-approve" disabled={busy || !storeUrl} onClick={save}>שמירה</button>
-        <button className="btn-reject" disabled={busy || !settings?.configured} onClick={testConnection}>בדיקת חיבור</button>
-        {saved && <span className="live-pill on">נשמר</span>}
+      <div className="btn-row">
+        <button className="action-btn" disabled={busy || !storeUrl} onClick={save}>שמירה</button>
+        <button className="action-btn secondary" disabled={busy || !settings?.configured} onClick={testConnection}>בדיקת חיבור</button>
       </div>
+      {saved && <div className="live-pill on" style={{ marginTop: 8 }}>✓ נשמר</div>}
 
       {testResult && (
-        <div className={testResult.ok ? 'meta' : 'error-box'} style={{ marginTop: 6 }}>
+        <div className={testResult.ok ? 'live-pill on' : 'error-box'} style={{ marginTop: 8 }}>
           {testResult.ok ? '✓ ' : '⚠️ '}{testResult.message}
         </div>
       )}
 
-      <div className="meta" style={{ marginTop: 6 }}>
-        סטטוס: {settings?.configured ? 'מוגדר' : 'לא מוגדר'}
+      <div className="meta" style={{ marginTop: 10 }}>
+        סטטוס חיבור: <b>{settings?.configured ? 'מוגדר ✓' : 'לא מוגדר'}</b>
       </div>
     </div>
   );

@@ -155,16 +155,26 @@ button { font-family: inherit; }
 
 .section-title { font-weight: bold; margin: 14px 0 8px; font-size: 15px; }
 
-/* מסך "כלי ניהול" — קבוצות הגדרות ברורות, נפרד מהדשבורד (בקשת דניאל 14.9.2026) */
+/* מסך "כלי ניהול" — קבוצות הגדרות ברורות, נפרד מהדשבורד (בקשת דניאל 14.9.2026,
+   עיצוב שופר 17.9.2026: קצת עומק/הרמה במקום כרטיסים שטוחים לגמרי) */
 .settings-card {
-  background: #fff; border: 1px solid var(--border); border-radius: 12px;
-  padding: 14px; margin-bottom: 14px;
+  background: #fff; border: 1px solid var(--border); border-radius: 14px;
+  padding: 16px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.05);
 }
 .settings-card-title {
-  font-weight: bold; font-size: 15px; margin-bottom: 10px;
-  padding-bottom: 8px; border-bottom: 1px solid var(--border);
+  font-weight: bold; font-size: 16px; margin-bottom: 12px;
+  padding-bottom: 10px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 8px;
 }
 .settings-card .admin-list-item:last-child { margin-bottom: 0; }
+
+/* שדות טופס בכרטיסי הגדרות (למשל חיבור WooCommerce) */
+.form-stack { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
+.text-input {
+  width: 100%; padding: 11px 12px; border-radius: 10px; border: 1px solid var(--border);
+  font-size: 14px; background: var(--bg);
+}
+.text-input:focus { outline: none; border-color: var(--teal); background: #fff; box-shadow: 0 0 0 3px rgba(11,92,102,.12); }
 
 /* פאנל עם הרבה תוכן (הרבה הזמנות/חריגות/משלוחים) מקבל "מעלית" פנימית במקום
    למתוח את כל הכרטיס לגובה בלתי מוגבל (בקשת דניאל 14.9.2026) */
@@ -291,7 +301,7 @@ button { font-family: inherit; }
 .toggle button { border: none; background: #fff; color: var(--teal); padding: 6px 12px; font-size: 12px; }
 .toggle button.active { background: var(--teal); color: #fff; }
 
-.admin-list-item { background: #fff; border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; }
+.admin-list-item { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; }
 .admin-list-item .top { display: flex; justify-content: space-between; align-items: center; }
 .admin-list-item .actions { display: flex; gap: 6px; margin-top: 8px; }
 .admin-list-item .actions button { flex: 1; padding: 8px; border-radius: 8px; border: none; font-size: 13px; }
