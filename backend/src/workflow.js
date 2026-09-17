@@ -18,9 +18,10 @@ class ConflictError extends Error {
   }
 }
 class RuleError extends Error {
-  constructor(message) {
+  constructor(message, code) {
     super(message);
     this.status = 400;
+    if (code) this.code = code;
   }
 }
 
@@ -248,6 +249,13 @@ function finishCheck(orderKey, userId, expectedVersion) {
     "SELECT COUNT(*) c FROM order_items_cache WHERE order_key = ? AND pick_status != 'missing' AND checked = 0"
   ).get(orderKey).c;
   if (unchecked > 0) throw new RuleError(`יש ${unchecked} שורות שעדיין לא אושרו בבדיקה`);
+
+  // לא לתת להזמנה עם תוספת ממתינה לעבור לאריזה — מישהו עלול לארוז ולשלוח
+  // בלי הפריט שעוד בדרך. חוסמים כאן (לא רק בסגירה כמו קודם), עם קוד ייעודי
+  // כדי שהפרונט יציג חלון מודגש במקום שגיאה רגילה. ר' בקשת דניאל 17.9.2026.
+  if (state.pending_addition_note) {
+    throw new RuleError(`יש תוספת בדרך — לא לארוז: ${state.pending_addition_note}`, 'pending_addition');
+  }
 
   const updated = writeTransition(orderKey, userId, 'ready_to_pack', {}, 'אישור בדיקה — מוכן לאריזה');
   propagateConfirmedShortages(orderKey, userId);
@@ -539,6 +547,19 @@ function computeShortageValue(orderKeys) {
   return value;
 }
 
+// הסכום "החי" של הזמנה: תמיד סכום שורות הפריטים בפועל כרגע (לא המספר הקפוא
+// שנמשך פעם אחת מסיגמא) — כך שינוי כמות/מחיר שקרה אחרי הסנכרון הראשוני כן
+// משתקף. נופל חזרה לערך הקפוא רק אם אין עדיין שורות פריטים בכלל. ר' בקשת
+// דניאל 17.9.2026: "הסכום... בפועל מה שקיים כרגע", ר' גם routes.js LIVE_TOTAL_SQL.
+function computeLiveTotal(orderKey) {
+  const itemsTotal = db.prepare(
+    'SELECT SUM(quantity * price) AS total FROM order_items_cache WHERE order_key = ?'
+  ).get(orderKey).total;
+  if (itemsTotal != null) return itemsTotal;
+  const row = db.prepare('SELECT total_amount AS total FROM orders_cache WHERE order_key = ?').get(orderKey);
+  return row?.total || 0;
+}
+
 // מחשב את סכום הגוביינא בפועל להצגה: full/full_plus_extra מסתכמים על כל
 // ההזמנות בקבוצה המקושרת (משלוח פיזי אחד), לא רק ההזמנה הבודדת. הסכום
 // יורד לפי מה שבאמת סופק (נלקט ואושר) — חוסר אמיתי מוריד משווי הפריט,
@@ -552,16 +573,15 @@ function computeCodDisplay(orderKey) {
   let groupTotal;
   if (state.linked_group_id) {
     const rows = db.prepare(`
-      SELECT oc.order_key, oc.total_amount FROM orders_cache oc
+      SELECT oc.order_key FROM orders_cache oc
       JOIN workflow_state ws ON ws.order_key = oc.order_key
       WHERE ws.linked_group_id = ?
     `).all(state.linked_group_id);
     orderKeys = rows.map((r) => r.order_key);
-    groupTotal = rows.reduce((sum, r) => sum + (r.total_amount || 0), 0);
+    groupTotal = orderKeys.reduce((sum, k) => sum + computeLiveTotal(k), 0);
   } else {
-    const row = db.prepare('SELECT total_amount AS total FROM orders_cache WHERE order_key = ?').get(orderKey);
     orderKeys = [orderKey];
-    groupTotal = row?.total || 0;
+    groupTotal = computeLiveTotal(orderKey);
   }
 
   const suppliedTotal = Math.max(0, groupTotal - computeShortageValue(orderKeys));

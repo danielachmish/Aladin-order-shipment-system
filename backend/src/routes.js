@@ -13,6 +13,13 @@ const { computeDashboard } = require('./dashboard');
 
 const router = express.Router();
 
+// הסכום המוצג על הזמנה הוא תמיד סכום השורות בפועל כרגע (order_items_cache),
+// לא המספר הקפוא שנמשך פעם אחת מסיגמא (orders_cache.total_amount) — כדי
+// שישקף שינויים בפועל (חוסר, תיקון כמות וכו'). נופל חזרה לערך הקפוא רק אם
+// אין עדיין שורות פריטים בכלל (למשל הזמנה שעוד לא סונכרנה עם פריטים).
+// ר' בקשת דניאל 17.9.2026: "הסכום... בפועל מה שקיים כרגע".
+const LIVE_TOTAL_SQL = `COALESCE((SELECT SUM(quantity * price) FROM order_items_cache oic WHERE oic.order_key = oc.order_key), oc.total_amount)`;
+
 // תיקון אבטחה (סקירה 14.9.2026): לא הייתה שום הגנה מפני ניחוש-סיסמה בכוח גס על
 // /auth/login (סיסמאות טקסט-גלוי, לעיתים קצרות כמו "1234" — ר' seed.js/auth.js).
 // הגבלת קצב פשוטה בזיכרון, לפי כתובת IP: מקסימום 10 ניסיונות התחברות כושלים
@@ -237,7 +244,8 @@ function baseOrderRow(order_key) {
            ws.linked_group_id, ws.updated_at AS wf_updated_at,
            ws.package_count, ws.pallet_count, ws.cod_type, ws.cod_amount, ws.cod_due_date,
            ws.planned_delivery_method, ws.special_instructions,
-           COALESCE(u.display_name, oc.sigma_agent_name) AS agent_name, cu.display_name AS claimed_by_name
+           COALESCE(u.display_name, oc.sigma_agent_name) AS agent_name, cu.display_name AS claimed_by_name,
+           ${LIVE_TOTAL_SQL} AS total_amount
     FROM orders_cache oc
     JOIN workflow_state ws ON ws.order_key = oc.order_key
     LEFT JOIN users u ON u.user_id = ws.agent_id
@@ -278,7 +286,7 @@ router.get('/orders', (req, res) => {
   const scope = getSetting('agent_view_scope', 'all');
 
   let sql = `
-    SELECT oc.order_key, oc.order_num, oc.customer_name, oc.total_amount, oc.line_count, oc.notes,
+    SELECT oc.order_key, oc.order_num, oc.customer_name, ${LIVE_TOTAL_SQL} AS total_amount, oc.line_count, oc.notes,
            ws.status, ws.priority, ws.agent_id, ws.claimed_by, ws.queue_entered_at, ws.version,
            ws.pending_addition_note, ws.linked_group_id,
            ws.cod_type, ws.planned_delivery_method, ws.special_instructions,
@@ -389,7 +397,7 @@ function handleWorkflowAction(fn) {
       const result = fn(key, req);
       res.json({ ok: true, state: result });
     } catch (e) {
-      res.status(e.status || 500).json({ error: e.message, current: e.current });
+      res.status(e.status || 500).json({ error: e.message, current: e.current, code: e.code });
     }
   };
 }
@@ -574,7 +582,7 @@ router.get('/history', requireRole('warehouse', 'warehouse_manager', 'system_adm
   const sinceDays = Number(days) > 0 ? Number(days) : 30;
 
   let sql = `
-    SELECT oc.order_key, oc.order_num, oc.customer_name, oc.total_amount,
+    SELECT oc.order_key, oc.order_num, oc.customer_name, ${LIVE_TOTAL_SQL} AS total_amount,
            ws.status, ws.priority, ws.updated_at, ws.shortage_invoiced_at, ws.shortage_invoiced_by,
            ws.package_count, ws.pallet_count, ws.linked_group_id,
            ws.cod_type, ws.cod_amount, ws.cod_due_date

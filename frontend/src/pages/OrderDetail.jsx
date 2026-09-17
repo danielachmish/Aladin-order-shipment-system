@@ -37,6 +37,7 @@ export default function OrderDetail({ user, orderKey, onBack }) {
   const [packageCount, setPackageCount] = useState('');
   const [palletCount, setPalletCount] = useState('');
   const [linkedWarning, setLinkedWarning] = useState(null);
+  const [pendingAdditionWarning, setPendingAdditionWarning] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
 
   // חיפוש הזמנה לקישור — גם לפי מספר וגם לפי שם לקוח (בקשת דניאל 14.9.2026:
@@ -133,11 +134,25 @@ export default function OrderDetail({ user, orderKey, onBack }) {
         setLinkedWarning(behind.map((lo) => `הזמנה ${lo.order_num} (${statusLabel(lo.status)})`).join(', '));
       }
     } catch (e) {
+      // תוספת עדיין בדרך — לא נותנים לזה לעבור בשקט לשלב אריזה (בקשת דניאל
+      // 17.9.2026: "אני לא רוצה שיגיעו לשלב הזה... כשהוא ילחץ אישרתי בדיקה
+      // יקפוץ לו חלון מודגש"). ר' workflow.js finishCheck, קוד 'pending_addition'.
+      if (e.data?.code === 'pending_addition') {
+        setBusy(false);
+        setPendingAdditionWarning(order.pending_addition_note);
+        return;
+      }
       await load(); // ר' הערה ב-act() — סדר הפוך כדי שהשגיאה לא תימחק
       setError(e.message);
     } finally {
       setBusy(false);
     }
+  }
+
+  async function confirmAdditionAndFinishCheck() {
+    setPendingAdditionWarning(null);
+    await act(() => api.additionReceived(orderKey));
+    await handleFinishCheck();
   }
 
   if (error && !data) return (
@@ -501,6 +516,23 @@ export default function OrderDetail({ user, orderKey, onBack }) {
               <b>אל תסגרו את הקרטון</b> עד שהיא תגיע לאותו שלב!
             </div>
             <button className="action-btn warn" onClick={() => setLinkedWarning(null)}>הבנתי</button>
+          </div>
+        </div>
+      )}
+
+      {pendingAdditionWarning && (
+        <div className="modal-backdrop" onClick={() => setPendingAdditionWarning(null)}>
+          <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+            <h3>🚫 יש תוספת בדרך — לא לארוז</h3>
+            <div className="meta" style={{ marginBottom: 8 }}>
+              להזמנה הזו יש תוספת ממתינה שעוד לא הגיעה: <b>{pendingAdditionWarning}</b>
+              <br /><br />
+              אל תעברו לאריזה עד שהתוספת בפועל הגיעה למחסן!
+            </div>
+            <div className="btn-row">
+              <button className="action-btn" disabled={busy} onClick={confirmAdditionAndFinishCheck}>✓ התוספת התקבלה — המשך</button>
+              <button className="action-btn secondary" onClick={() => setPendingAdditionWarning(null)}>סגירה</button>
+            </div>
           </div>
         </div>
       )}
