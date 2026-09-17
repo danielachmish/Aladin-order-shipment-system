@@ -35,6 +35,7 @@ export default function OrderDetail({ user, orderKey, onBack }) {
   const [showPack, setShowPack] = useState(false);
   const [packageCount, setPackageCount] = useState('');
   const [palletCount, setPalletCount] = useState('');
+  const [linkedWarning, setLinkedWarning] = useState(null);
 
   // חיפוש הזמנה לקישור — גם לפי מספר וגם לפי שם לקוח (בקשת דניאל 14.9.2026:
   // "לא תמיד זוכר את מספר ההזמנה"). מציג את ההזמנות התואמות, ממוינות מהחדשה
@@ -124,9 +125,10 @@ export default function OrderDetail({ user, orderKey, onBack }) {
         (lo) => (STATUS_INDEX[lo.status] ?? 0) < STATUS_INDEX.ready_to_pack
       );
       if (behind.length > 0) {
-        window.alert(
-          `⚠️ הזמנה זו מקושרת ל${behind.map((lo) => `הזמנה ${lo.order_num} (${statusLabel(lo.status)})`).join(', ')} — עדיין לא הגיעה לשלב אריזה.\n\nאל תסגרו את הקרטון עד שהיא תגיע לאותו שלב!`
-        );
+        // חלון בתוך האפליקציה, לא window.alert() של הדפדפן (בקשת דניאל
+        // 17.9.2026: "אני רוצה התראה של המערכת לא של הדפדפן") — לא נעלם
+        // לבד, דורש אישור מפורש, כי זו הודעה קריטית ("אל תסגרו קרטון").
+        setLinkedWarning(behind.map((lo) => `הזמנה ${lo.order_num} (${statusLabel(lo.status)})`).join(', '));
       }
     } catch (e) {
       await load(); // ר' הערה ב-act() — סדר הפוך כדי שהשגיאה לא תימחק
@@ -464,6 +466,20 @@ export default function OrderDetail({ user, orderKey, onBack }) {
               אישור ביטול
             </button>
             <button className="action-btn secondary" onClick={() => setShowCancel(false)}>סגירה</button>
+          </div>
+        </div>
+      )}
+
+      {linkedWarning && (
+        <div className="modal-backdrop" onClick={() => setLinkedWarning(null)}>
+          <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+            <h3>⚠️ הזמנה מקושרת עדיין לא מוכנה</h3>
+            <div className="meta" style={{ marginBottom: 8 }}>
+              הזמנה זו מקושרת ל{linkedWarning} — עדיין לא הגיעה לשלב אריזה.
+              <br /><br />
+              <b>אל תסגרו את הקרטון</b> עד שהיא תגיע לאותו שלב!
+            </div>
+            <button className="action-btn warn" onClick={() => setLinkedWarning(null)}>הבנתי</button>
           </div>
         </div>
       )}

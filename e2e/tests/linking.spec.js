@@ -34,12 +34,14 @@ test('linking two orders shows the badge, and packing ahead of a lagging sibling
     await page.waitForTimeout(150);
   }
 
-  // ברגע "סיום בדיקה" צריכה לצאת התראה מוקדמת שההזמנה המקושרת עוד לא הגיעה לשלב
-  let dialogMessage = '';
-  page.once('dialog', async (dialog) => { dialogMessage = dialog.message(); await dialog.accept(); });
+  // ברגע "סיום בדיקה" צריך לצאת חלון בתוך האפליקציה (לא window.alert של
+  // הדפדפן - ר' בקשת דניאל 17.9.2026) שההזמנה המקושרת עוד לא הגיעה לשלב
   await page.getByRole('button', { name: /^אישרתי בדיקה/ }).click();
+  await expect(page.getByText('⚠️ הזמנה מקושרת עדיין לא מוכנה')).toBeVisible();
+  await expect(page.locator('.modal-sheet')).toContainText('54720');
+  await page.getByRole('button', { name: 'הבנתי' }).click();
+  await expect(page.locator('.modal-backdrop')).toHaveCount(0);
   await expect(page.locator('.badge.status-ready_to_pack')).toBeVisible();
-  expect(dialogMessage).toContain('54720');
 
   // ניסיון לסיים אריזה נחסם בשרת (guard), עם שגיאה שמזכירה את ההזמנה השנייה.
   // ממתינים לתשובת ה-API עצמה (לא רק לרינדור) כדי שהבדיקה לא תהיה תלויה בטיימינג
