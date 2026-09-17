@@ -5,7 +5,7 @@ const { createTestApp, seedUser, seedOrder, loginAs, resetDb } = require('./help
 // לשימוש המזכירה בהפקת שטרי מטען UPS; (2) גוביינא (שיק דחוי) לפי הזמנה,
 // כולל שכפול אוטומטי על קבוצה מקושרת (משלוח פיזי אחד).
 describe('packages count + COD (gvina)', () => {
-  let app, db, cleanup, managerToken, warehouseToken;
+  let app, db, cleanup, managerToken, warehouseToken, agentToken;
 
   beforeAll(() => {
     ({ app, db, cleanup } = createTestApp());
@@ -17,8 +17,10 @@ describe('packages count + COD (gvina)', () => {
     resetDb(db);
     seedUser(db, { username: 'manager1', role: 'warehouse_manager' });
     seedUser(db, { username: 'wh1', role: 'warehouse' });
+    seedUser(db, { username: 'agent1', role: 'agent' });
     managerToken = await loginAs(request, app, 'manager1');
     warehouseToken = await loginAs(request, app, 'wh1');
+    agentToken = await loginAs(request, app, 'agent1');
   });
 
   describe('pack-done package/pallet count', () => {
@@ -206,7 +208,7 @@ describe('packages count + COD (gvina)', () => {
       expect(order.cod_display_amount).toBe(300);
     });
 
-    it('POST /items/:lineNo/replace rejects a non-manager (role gate)', async () => {
+    it('POST /items/:lineNo/replace is usable by the picker/checker (warehouse), not just a manager', async () => {
       seedOrder(db, { orderKey: '3|0|16', orderNum: 16, status: 'ready_for_check' });
       db.prepare(`
         INSERT INTO order_items_cache (order_key, line_no, item_code, item_name, quantity, price, pick_status, qty_picked)
@@ -215,6 +217,20 @@ describe('packages count + COD (gvina)', () => {
       const res = await request(app)
         .post('/api/orders/3%7C0%7C16/items/1/replace')
         .set('Authorization', `Bearer ${warehouseToken}`)
+        .send({ replacedTo: 'שחור' });
+      expect(res.status).toBe(200);
+      expect(res.body.item.replaced_to).toBe('שחור');
+    });
+
+    it('POST /items/:lineNo/replace rejects an agent (role gate)', async () => {
+      seedOrder(db, { orderKey: '3|0|18', orderNum: 18, status: 'ready_for_check' });
+      db.prepare(`
+        INSERT INTO order_items_cache (order_key, line_no, item_code, item_name, quantity, price, pick_status, qty_picked)
+        VALUES ('3|0|18', 1, 'A1', 'פריט', 1, 10, 'missing', 0)
+      `).run();
+      const res = await request(app)
+        .post('/api/orders/3%7C0%7C18/items/1/replace')
+        .set('Authorization', `Bearer ${agentToken}`)
         .send({ replacedTo: 'שחור' });
       expect(res.status).toBe(403);
     });

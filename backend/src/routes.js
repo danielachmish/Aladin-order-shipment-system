@@ -644,13 +644,14 @@ router.post('/orders/:key/unmark-shortage-invoiced', requireRole('warehouse_mana
   handleWorkflowAction((key, req) => wf.unmarkShortageInvoiced(key, req.user.id)));
 
 // "הוחלף צבע" — תיעוד תחליף שהלקוח אישר לפריט חסר (ר' ייעוץ 17.9.2026).
-// תיעוד בלבד בתוך Aladin, לא נכתב לסיגמא. replacedTo ריק/חסר = מבטל את הסימון.
-router.post('/orders/:key/items/:lineNo/replace', requireRole('warehouse_manager', 'system_admin'), (req, res) => {
+// זמין למלקט/בודק (warehouse) בזמן אמת וגם למנהל מההיסטוריה אחר כך —
+// לא נכתב לסיגמא. replacedTo ריק/חסר = מבטל את הסימון.
+router.post('/orders/:key/items/:lineNo/replace', requireRole('warehouse', 'warehouse_manager', 'system_admin'), (req, res) => {
   try {
     const key = decodeURIComponent(req.params.key);
     const lineNo = Number(req.params.lineNo);
-    const state = wf.markItemReplaced(key, lineNo, req.user.id, req.body?.replacedTo);
-    res.json({ ok: true, state });
+    const item = wf.markItemReplaced(key, lineNo, req.user.id, req.body?.replacedTo);
+    res.json({ ok: true, item });
   } catch (e) {
     res.status(e.status || 500).json({ error: e.message });
   }

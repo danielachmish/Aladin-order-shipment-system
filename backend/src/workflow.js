@@ -566,10 +566,11 @@ function computeCodDisplay(orderKey) {
   return state.cod_type === 'full_plus_extra' ? suppliedTotal + (state.cod_amount || 0) : suppliedTotal;
 }
 
-// "הוחלף צבע" — לקוח אישר תחליף לפריט חסר (SKU/צבע אחר, אותו מחיר). תיעוד
-// בלבד בתוך Aladin, לא נכתב לסיגמא — מי שמעדכן את השורה בפועל בסיגמא נעזר
-// בהערה הזו. מוחק את ההערה (replacedTo ריק) מחזיר את הפריט להיחשב "חוסר
-// אמיתי" לצורך חישוב הגוביינא. ר' ייעוץ 17.9.2026.
+// "הוחלף צבע" — לקוח אישר תחליף לפריט חסר (SKU/צבע אחר, אותו מחיר). זמין
+// למלקט/בודק ברגע שמסמנים שורה כחסרה/חלקית (לא רק למנהל בהיסטוריה אחר כך —
+// ר' בקשת דניאל 17.9.2026), וגם למנהל בהיסטוריה. תיעוד בלבד בתוך Aladin,
+// לא נכתב לסיגמא — מי שמעדכן את השורה בפועל בסיגמא נעזר בהערה הזו. מחיקת
+// ההערה (replacedTo ריק) מחזירה את הפריט להיחשב "חוסר אמיתי" לצורך הגוביינא.
 function markItemReplaced(orderKey, lineNo, userId, replacedTo) {
   const state = getState(orderKey);
   if (!state) throw new RuleError('הזמנה לא נמצאה');
@@ -586,7 +587,8 @@ function markItemReplaced(orderKey, lineNo, userId, replacedTo) {
       value ? `פריט ${item.item_code} הוחלף ל: ${value}` : `בוטלה החלפת פריט ${item.item_code}`);
   });
   tx();
-  return getState(orderKey);
+  emitChange('order', { order_key: orderKey, status: state.status, version: state.version });
+  return db.prepare('SELECT * FROM order_items_cache WHERE order_key = ? AND line_no = ?').get(orderKey, lineNo);
 }
 
 // דוח חוסרים למזכירה (בקשת דניאל 14.9.2026): מזכירה (יוזר warehouse_manager)

@@ -19,6 +19,8 @@ export default function PickChecklist({ mode, order, items, onItemUpdated, busy,
   const [editingLine, setEditingLine] = useState(null);
   const [editQty, setEditQty] = useState('');
   const [editNote, setEditNote] = useState('');
+  const [replaceLine, setReplaceLine] = useState(null);
+  const [replaceText, setReplaceText] = useState('');
 
   // תיקון (17.9.2026, בקשת דניאל): לחיצה על שורה בליקוט/בדיקה גרמה לרענון
   // מלא של כל ההזמנה (GET נוסף עם כל השורות/אירועים/משלוחים) על כל לחיצה,
@@ -52,6 +54,23 @@ export default function PickChecklist({ mode, order, items, onItemUpdated, busy,
     }
   }
 
+  // "הוחלף צבע" — הלקוח אישר תחליף (SKU/צבע אחר, אותו מחיר) לפריט חסר.
+  // זמין למלקט וגם לבודק ברגע שמסמנים שורה כחסרה/חלקית — לא רק למנהל
+  // בהיסטוריה אחר כך (בקשת דניאל 17.9.2026). לא נכתב לסיגמא, תיעוד בלבד.
+  async function saveReplace(item, replacedTo) {
+    setBusy(true);
+    setError('');
+    try {
+      const res = await api.replaceItem(order.order_key, item.line_no, replacedTo);
+      setReplaceLine(null);
+      onItemUpdated(res.item);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   // תיקון בודק: המלקט טעה (סימן "נלקט" אבל בפועל חסר/כמות שונה, או להפך —
   // סימן "חסר" אבל בעצם כן נמצא). ר' PICKING_QC_SPEC.md סעיף 12.
   async function correctPick(item, pickStatus, qtyPicked, checkNote) {
@@ -72,7 +91,34 @@ export default function PickChecklist({ mode, order, items, onItemUpdated, busy,
     <div>
       {sorted.map((it) => {
         const isMissing = it.pick_status === 'missing';
+        const isShortage = it.pick_status === 'missing' || it.pick_status === 'partial';
         const rowDoneClass = mode === 'pick' ? (it.pick_status ? ' done' : '') : ((isMissing || it.checked) ? ' done' : '');
+        const replaceBlock = isShortage && (
+          replaceLine === it.line_no ? (
+            <div className="btn-row" onClick={(e) => e.stopPropagation()}>
+              <input
+                autoFocus className="text-input" style={{ flex: '1 1 140px' }}
+                placeholder="לאיזה צבע/פריט הוחלף?"
+                value={replaceText} onChange={(e) => setReplaceText(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') saveReplace(it, replaceText); }}
+              />
+              <button className="action-btn small" disabled={busy} onClick={() => saveReplace(it, replaceText)}>שמירה</button>
+              <button className="action-btn secondary small" onClick={() => setReplaceLine(null)}>ביטול</button>
+            </div>
+          ) : it.replaced_to ? (
+            <div className="btn-row">
+              <span className="replaced-note" onClick={() => { setReplaceLine(it.line_no); setReplaceText(it.replaced_to); }}>
+                🔄 הוחלף ל: {it.replaced_to}
+              </span>
+            </div>
+          ) : (
+            <div className="btn-row">
+              <button className="action-btn secondary small" disabled={busy} onClick={() => { setReplaceLine(it.line_no); setReplaceText(''); }}>
+                🔄 הוחלף צבע
+              </button>
+            </div>
+          )
+        );
         return (
           <div className={'pick-item-card' + rowDoneClass + (isMissing ? ' missing' : '')} key={it.line_no}>
             <div className="pick-item-top">
@@ -91,6 +137,7 @@ export default function PickChecklist({ mode, order, items, onItemUpdated, busy,
                     {it.pick_note ? ` · ${it.pick_note}` : ''}
                   </div>
                 )}
+                {replaceBlock}
 
                 {editingLine === it.line_no ? (
                   <div className="pick-edit-row">
@@ -136,6 +183,7 @@ export default function PickChecklist({ mode, order, items, onItemUpdated, busy,
                 ) : (
                   <div className="meta">נלקט: {it.qty_picked} מתוך {it.quantity}{it.pick_note ? ` · ${it.pick_note}` : ''}</div>
                 )}
+                {replaceBlock}
 
                 {editingLine === it.line_no ? (
                   // תיקון בודק — יכול לשנות את מה שהמלקט קבע (כולל להפוך "חסר" ל"נמצא" ולהפך)
