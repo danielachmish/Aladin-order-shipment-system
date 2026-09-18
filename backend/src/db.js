@@ -53,5 +53,6 @@ ensureColumn('workflow_state', 'special_instructions', 'TEXT');
 ensureColumn('order_items_cache', 'replaced_to', 'TEXT');
 ensureColumn('order_items_cache', 'replaced_qty', 'REAL');
 ensureColumn('order_items_cache', 'replaced_confirmed', 'INTEGER NOT NULL DEFAULT 0');
+ensureColumn('order_items_cache', 'qty_verified', 'REAL'); // ר' BARCODE_SCANNING_SPEC.md
 
 module.exports = { db, isNew };

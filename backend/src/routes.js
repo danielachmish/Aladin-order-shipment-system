@@ -447,6 +447,21 @@ router.post('/orders/:key/items/:lineNo/correct-pick', requireRole('warehouse', 
   }
 });
 
+// סריקת ברקוד — ליקוט ובדיקה כאחד, ההקשר (סטטוס ההזמנה) קובע את הפעולה
+// בצד השרת. ר' BARCODE_SCANNING_SPEC.md.
+router.post('/orders/:key/items/scan', requireRole('warehouse', 'warehouse_manager'), (req, res) => {
+  try {
+    const key = decodeURIComponent(req.params.key);
+    const { barcode, clientEventId, deviceId } = req.body || {};
+    if (!barcode || typeof barcode !== 'string') return res.status(400).json({ error: 'ברקוד חסר' });
+    if (!clientEventId || typeof clientEventId !== 'string') return res.status(400).json({ error: 'clientEventId חסר' });
+    const result = wf.scanItem(key, { barcode, clientEventId, userId: req.user.id, deviceId: deviceId || null });
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message });
+  }
+});
+
 router.post('/orders/:key/finish-check', requireRole('warehouse', 'warehouse_manager'),
   handleWorkflowAction((key, req) => wf.finishCheck(key, req.user.id, req.body?.expectedVersion)));
 

@@ -67,8 +67,30 @@ CREATE TABLE IF NOT EXISTS order_items_cache (
   replaced_to TEXT, -- לקוח אישר תחליף (למשל צבע אחר) לפריט חסר — תיאור חופשי, לא נכתב לסיגמא (ר' ייעוץ 17.9.2026)
   replaced_qty REAL, -- כמות התחליף (ברירת מחדל: הכמות שהייתה חסרה, ניתן לשינוי)
   replaced_confirmed INTEGER NOT NULL DEFAULT 0, -- 1 = הבודק אימת בפועל שהתחליף (פריט+כמות) נכון — רק אז זו הוראה סופית לחשבונית
+  qty_verified REAL, -- כמות שאומתה בפועל בסריקת בדיקה; NULL = עוד לא נסרקה לבדיקה. היעד הוא qty_picked, לא quantity (ר' BARCODE_SCANNING_SPEC.md)
   PRIMARY KEY (order_key, line_no)
 );
+
+-- סריקות ברקוד (ליקוט + בדיקה) — idempotency (UNIQUE על client_event_id) +
+-- audit מובנה. ר' BARCODE_SCANNING_SPEC.md. stage קובע אם previous_qty/new_qty
+-- מתייחסים ל-qty_picked (picking) או ל-qty_verified (verification).
+CREATE TABLE IF NOT EXISTS scan_events (
+  event_id        TEXT PRIMARY KEY,
+  client_event_id TEXT NOT NULL,
+  order_key       TEXT NOT NULL,
+  line_no         INTEGER NOT NULL,
+  barcode         TEXT,
+  stage           TEXT NOT NULL CHECK (stage IN ('picking','verification')),
+  delta_qty       REAL NOT NULL,
+  previous_qty    REAL NOT NULL,
+  new_qty         REAL NOT NULL,
+  result_code     TEXT NOT NULL,
+  user_id         TEXT,
+  device_id       TEXT,
+  created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (order_key, client_event_id)
+);
+CREATE INDEX IF NOT EXISTS idx_scan_events_order ON scan_events(order_key, line_no);
 
 -- מוצרים שאומתו כחסרים במלאי בפועל (ר' ייעוץ 17.9.2026, נושא 4) — ע"י בודק
 -- QC שהשאיר שורה 'missing' עד finishCheck. משדר את הסימון "חסר" לכל שאר

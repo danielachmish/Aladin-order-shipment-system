@@ -49,6 +49,20 @@ async function request(path, opts = {}) {
   return data;
 }
 
+// לסריקה בלבד: כשל רשת אמיתי (fetch נכשל, אין תשובה מהשרת בכלל — err.status
+// לא מוגדר) שווה לנסות שוב אוטומטית עם אותו payload (כולל אותו clientEventId,
+// שנקבע כבר אצל הקורא) לפני שמציגים כשל לעובד. שגיאת HTTP רגילה (err.status
+// קיים — השרת כן ענה) לא שווה retry, זה לא בעיית רשת. ר' BARCODE_SCANNING_SPEC.md סעיף 6.3.
+async function requestWithRetry(path, opts, delaysMs = [300, 800]) {
+  try {
+    return await request(path, opts);
+  } catch (e) {
+    if (e.status || delaysMs.length === 0) throw e;
+    await new Promise((resolve) => setTimeout(resolve, delaysMs[0]));
+    return requestWithRetry(path, opts, delaysMs.slice(1));
+  }
+}
+
 export const api = {
   login: (username, password) => request('/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }),
   health: () => request('/health'),
@@ -64,6 +78,7 @@ export const api = {
   pickItem: (key, lineNo, data) => request(`/orders/${encodeURIComponent(key)}/items/${lineNo}/pick`, { method: 'POST', body: JSON.stringify(data) }),
   checkItem: (key, lineNo, data) => request(`/orders/${encodeURIComponent(key)}/items/${lineNo}/check`, { method: 'POST', body: JSON.stringify(data) }),
   correctPickItem: (key, lineNo, data) => request(`/orders/${encodeURIComponent(key)}/items/${lineNo}/correct-pick`, { method: 'POST', body: JSON.stringify(data) }),
+  scanItem: (key, { barcode, clientEventId, deviceId }) => requestWithRetry(`/orders/${encodeURIComponent(key)}/items/scan`, { method: 'POST', body: JSON.stringify({ barcode, clientEventId, deviceId }) }),
   finishCheck: (key, expectedVersion) => request(`/orders/${encodeURIComponent(key)}/finish-check`, { method: 'POST', body: JSON.stringify({ expectedVersion }) }),
   packDone: (key, expectedVersion, packageCount, palletCount) => request(`/orders/${encodeURIComponent(key)}/pack-done`, { method: 'POST', body: JSON.stringify({ expectedVersion, packageCount, palletCount }) }),
   deliverUps: (key, expectedVersion) => request(`/orders/${encodeURIComponent(key)}/deliver-ups`, { method: 'POST', body: JSON.stringify({ expectedVersion }) }),

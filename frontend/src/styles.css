@@ -233,6 +233,22 @@ button { font-family: inherit; }
 .pick-progress-fill { background: var(--teal); height: 100%; transition: width .2s ease; }
 .pick-progress-label { font-size: 12px; color: var(--muted); margin-top: 4px; }
 
+/* פס חיווי סריקה — ר' BARCODE_SCANNING_SPEC.md. לא popup, נעלם לבד (חוץ
+   מכשל חיבור, שנשאר עד סריקה מוצלחת הבאה). */
+.scan-banner {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  padding: 10px 14px;
+  border-radius: 10px;
+  margin-bottom: 10px;
+  font-weight: 600;
+  font-size: 15px;
+  text-align: center;
+}
+.scan-banner.success { background: #e6f4ea; color: var(--green); }
+.scan-banner.error { background: #fdecea; color: var(--red); }
+
 /* כרטיס פריט בליקוט/בדיקה — עוצב מחדש לפי בקשת דניאל 17.9.2026 ("לא ברור
    בכלל, אני צריך בולט: מיקום פריט, שם פריט, כמות שהוזמנה"): מיקום כשורה
    קטנה, שם הפריט וכמות באותו גודל/כובד ויזואלי כי שניהם קריטיים למלקט,

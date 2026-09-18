@@ -1,5 +1,8 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api.js';
+import useScannerCapture from '../scanner/useScannerCapture.js';
+import { playSuccessSound, playErrorSound } from '../scanner/scanSound.js';
+import { getDeviceId } from '../scanner/deviceId.js';
 
 // ליקוט לפי מיקום + בדיקה (QC) — ר' PICKING_QC_SPEC.md (סוכם עם דניאל 14.9.2026).
 // mode='pick': המלקט מסמן כל שורה (נלקט הכל / חלקי / חסר), ממוין לפי מיקום פיזי.
@@ -14,6 +17,34 @@ function sortByLocation(items) {
   });
 }
 
+// טקסט חיווי לפס העליון לפי תוצאת סריקה — ר' BARCODE_SCANNING_SPEC.md סעיפים
+// 5, 6.2. success/error קובע צבע+צליל; לא מייצרים popup בשום מקרה.
+function describeScanResult(result) {
+  const name = result.item?.item_name || '';
+  switch (result.resultCode) {
+    case 'ACCEPTED':
+      return result.stage === 'verification'
+        ? { kind: 'success', text: `✓ אומת — ${result.item.qty_verified} מתוך ${result.item.qty_picked}` }
+        : { kind: 'success', text: `✓ ${name} — ${result.item.qty_picked} מתוך ${result.item.quantity}` };
+    case 'ITEM_COMPLETED':
+      return { kind: 'success', text: `✓ ${name} — הושלם!` };
+    case 'ORDER_COMPLETED':
+      return { kind: 'success', text: `✓ ${name} — כל השורות טופלו!` };
+    case 'OVER_PICK':
+      return { kind: 'error', text: `⚠️ ${name || 'הפריט'} — כבר נלקט במלואו` };
+    case 'VERIFY_MISMATCH':
+      return { kind: 'error', text: `❌ נסרק יותר ממה שדווח כנלקט — בדקו/תקנו ידנית` };
+    case 'NOTHING_TO_VERIFY':
+      return { kind: 'error', text: `⚠️ ${name || 'הפריט'} סומן כחסר — אין מה לבדוק` };
+    case 'NOT_IN_ORDER':
+      return { kind: 'error', text: `❌ ברקוד לא שייך להזמנה הזו${result.barcode ? ` (${result.barcode})` : ''}` };
+    case 'ORDER_NOT_SCANNABLE':
+      return { kind: 'error', text: `⚠️ ההזמנה לא במצב ליקוט/בדיקה כרגע` };
+    default:
+      return { kind: 'error', text: `❌ שגיאה בסריקה` };
+  }
+}
+
 export default function PickChecklist({ mode, order, items, onItemUpdated, busy, setBusy, setError }) {
   const sorted = sortByLocation(items);
   const [editingLine, setEditingLine] = useState(null);
@@ -22,6 +53,40 @@ export default function PickChecklist({ mode, order, items, onItemUpdated, busy,
   const [replaceLine, setReplaceLine] = useState(null);
   const [replaceText, setReplaceText] = useState('');
   const [replaceQty, setReplaceQty] = useState('');
+
+  // סריקת ברקוד — ר' BARCODE_SCANNING_SPEC.md. פס חיווי דק, לא popup; נעלם
+  // לבד אחרי כ-1.5 שניות, חוץ מכשל חיבור (נשאר עד שסריקה הבאה מצליחה).
+  const [scanBanner, setScanBanner] = useState(null); // { kind: 'success'|'error', text, sticky? }
+  const bannerTimerRef = useRef(null);
+
+  useEffect(() => () => { if (bannerTimerRef.current) clearTimeout(bannerTimerRef.current); }, []);
+
+  function showBanner(kind, text, sticky = false) {
+    if (bannerTimerRef.current) clearTimeout(bannerTimerRef.current);
+    setScanBanner({ kind, text, sticky });
+    if (!sticky) {
+      bannerTimerRef.current = setTimeout(() => setScanBanner(null), 1500);
+    }
+  }
+
+  const handleScan = useCallback(async (barcode) => {
+    const clientEventId = crypto.randomUUID();
+    try {
+      const res = await api.scanItem(order.order_key, { barcode, clientEventId, deviceId: getDeviceId() });
+      const { kind, text } = describeScanResult(res);
+      if (kind === 'success') playSuccessSound(); else playErrorSound();
+      showBanner(kind, text);
+      if (res.item) onItemUpdated(res.item);
+    } catch (e) {
+      // כשל רשת אמיתי אחרי כל ניסיונות ה-retry הפנימיים (api.scanItem) — לא
+      // מעמידים פנים שהסריקה נקלטה. חיווי קבוע עד שסריקה הבאה מצליחה, בדיוק
+      // כמו "אמינות על פני illusion של offline" (BARCODE_SCANNING_SPEC.md 6.3).
+      playErrorSound();
+      showBanner('error', 'אין חיבור — הסריקה האחרונה לא אושרה, בדקו את הכמות במסך לפני שממשיכים', true);
+    }
+  }, [order.order_key, onItemUpdated]);
+
+  useScannerCapture(handleScan, { enabled: true });
 
   // תיקון (17.9.2026, בקשת דניאל): לחיצה על שורה בליקוט/בדיקה גרמה לרענון
   // מלא של כל ההזמנה (GET נוסף עם כל השורות/אירועים/משלוחים) על כל לחיצה,
@@ -107,6 +172,9 @@ export default function PickChecklist({ mode, order, items, onItemUpdated, busy,
 
   return (
     <div>
+      {scanBanner && (
+        <div className={`scan-banner ${scanBanner.kind}`}>{scanBanner.text}</div>
+      )}
       {sorted.map((it) => {
         const isMissing = it.pick_status === 'missing';
         const isShortage = it.pick_status === 'missing' || it.pick_status === 'partial';
