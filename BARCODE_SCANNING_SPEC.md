@@ -1,44 +1,63 @@
-# איפיון: ליקוט בסריקת ברקוד (Bluetooth HID)
+# איפיון: ליקוט + בדיקה (QC) בסריקת ברקוד (Bluetooth HID)
 
-נכתב לפי `BARCODE_PICKING_ARCHITECTURE_REVIEW.md` (17.9.2026) ואישור דניאל
-18.9.2026 להמשיך לאיפיון מדויק. **מסמך זה הוא איפיון בלבד — אין לבצע
-implementation לפי המסמך הזה עד אישור מפורש נוסף על "תוכנית העבודה"
-שבסעיף 9.**
+נכתב לפי `BARCODE_PICKING_ARCHITECTURE_REVIEW.md` (17.9.2026), עם עדכון
+18.9.2026: **סריקה בשלב הבדיקה היא חלק מ-V1, לא שיפור עתידי** — לפי
+דניאל זה אפילו קריטי יותר מסריקה בליקוט עצמו. **מסמך זה הוא איפיון בלבד
+— אין לבצע implementation לפי המסמך הזה עד אישור מפורש נוסף על "תוכנית
+העבודה" שבסעיף 9.**
 
-קלט שאושר: **ברקוד אחד בלבד לכל פריט** (אין ברקוד מארז/קרטון/יחידות
-מרובות) — זה מפשט משמעותית את מודל הנתונים ביחס למה שנסקר ב-Architecture
-Review (אין צורך ב-`UnitsPerScan`, אין צורך בטבלת `product_barcodes`
-נפרדת).
+קלט שאושר: **ברקוד אחד בלבד לכל פריט** — אין צורך ב-`UnitsPerScan`/
+`product_barcodes` נפרדת. הרזולוציה נעשית ישירות מול `order_items_cache.barcode`
+הקיים.
 
 ---
 
-## 1. מה בדיוק קורה מנקודת המבט של המלקט
+## 1. מה בדיוק קורה — שני שלבים, אותו מנגנון
 
-1. מלקט נמצא במסך הזמנה שכבר ב-`picking` (בדיוק כמו היום).
-2. מסך הליקוט (`PickChecklist`, mode='pick') **לא משתנה ויזואלית** —
-   אותה רשימת שורות ממוינת לפי מיקום, אותם כפתורי מגע. **נוסף** רק:
-   - פס חיווי דק בראש המסך (לא popup, לא modal) שמציג את תוצאת הסריקה
-     האחרונה למשך כ-1.5 שניות ואז נעלם.
-   - צליל קצר (הצלחה/שגיאה) בכל סריקה.
-3. המלקט מרים פריט, לוחץ trigger בסורק. הסורק (Bluetooth HID) "מקליד"
-   את הברקוד + Enter ישירות לדפדפן — **בלי שהמלקט נוגע במסך בכלל**.
-4. המערכת מזהה שזו סריקה (לא הקלדה של אדם), שולחת לשרת, מקבלת תשובה
-   תוך פחות מ-¼ שנייה בדרך כלל, ומעדכנת:
-   - את השורה הרלוונטית ברשימה (מסומנת "נלקט"/מתקדמת בכמות).
-   - את פס החיווי העליון.
-5. אם הפריט הושלם (כל הכמות נלקטה) — השורה מסומנת ✓ אוטומטית, **בלי**
-   שהמלקט צריך ללחוץ שום כפתור.
-6. **המסלול הידני הקיים ממשיך לעבוד בדיוק כמו היום, ללא שום שינוי** —
-   כפתורי "✓ ליקטתי הכל" / "כמות אחרת" / "לא נמצא" נשארים זמינים תמיד,
-   גם כש-Scan פעיל על אותו מסך. שני הערוצים עובדים במקביל על אותה רשימה.
+המסך הקיים (`PickChecklist`) כבר מפריד `mode='pick'` (בזמן שההזמנה
+ב-`picking`) מ-`mode='check'` (ב-`ready_for_check`) — **אותו מנגנון
+סריקה יעבוד בשני המצבים**, כשההקשר (הסטטוס הנוכחי של ההזמנה) קובע
+איזו פעולה מתבצעת בפועל. זו בדיוק העקרון "Scan Event → Current Workflow
+Context → Command".
 
-**החלטה מפורשת:** ב-V1 **אין** מסך "Scan Mode" נפרד ומינימליסטי כפי
-שתואר בדרישה המקורית — הסורק פועל *בתוך* מסך הליקוט הקיים (רשימת
-השורות + פס חיווי), לא מחליף אותו. הסיבה: (א) זה מקטין באופן ניכר את
-היקף השינוי הראשוני והסיכון, (ב) זה עונה על העיקרון "הסורק ממשיך לעבוד
-גם ב-Manual Mode" באופן הכי ישיר — כי זה אותו מסך בדיוק. אם אחרי שימוש
-בפועל יתברר שרוצים מסך "נקי" ייעודי — זה תוספת UI קטנה בשלב מאוחר יותר,
-לא צריך לתכנן אותה מראש.
+### 1.1 בליקוט (`picking`)
+בדיוק כפי שתואר בגרסה הקודמת של המסמך: כל סריקה מוסיפה 1 ל-`qty_picked`
+של השורה המתאימה, עד לכמות שהוזמנה.
+
+### 1.2 בבדיקה (`ready_for_check`) — **חדש בגרסה הזו**
+כל סריקה מוסיפה 1 ל-**`qty_verified`** (עמודה חדשה) של השורה — לא
+ל-`qty_picked`. המטרה: הבודק סורק פיזית את מה שבאמת בקרטון/במשטח,
+והמערכת משווה מול מה שהמלקט *טען* שליקט (`qty_picked`), לא מול הכמות
+המקורית שהוזמנה.
+
+**למה מול `qty_picked` ולא מול `quantity`:** אם המלקט כבר סימן שורה
+כ-`partial` (למשל 4 מתוך 6, 2 חסרים ומדווחים כבר), אין מה לבדוק
+פיזית 6 יחידות — יש בפועל 4 בקרטון. הבודק סורק וה"יעד" שלו הוא 4,
+לא 6. כשה-`qty_verified` מגיע ל-`qty_picked` — השורה מסומנת `checked=1`
+**אוטומטית**, בדיוק כמו שליקוט שמגיע לכמות המלאה מסומן `pick_status='picked'`
+אוטומטית.
+
+**שורה שסומנה `missing`** — אין לה מה לבדוק בכלל (כלל קיים כבר היום
+ב-`updateItemCheck`, `workflow.js:156`). סריקת ברקוד ששייך לשורה כזו
+מחזירה קוד ייעודי (`NOTHING_TO_VERIFY`, ר' סעיף 4) במקום לנסות "לאמת"
+משהו שלא אמור להיות שם.
+
+**חריגה בבדיקה (הבודק סרק יותר יחידות מה-`qty_picked` שדווח):** זה
+ממצא אמיתי וחשוב — ייתכן שהמלקט ספר לא נכון. **לא** מעדכנים אוטומטית
+את `qty_picked` מסריקת יתר בבדיקה (זה עדיין "אמת" של המלקט עד שמישהו
+מחליט אחרת) — מחזירים קוד `VERIFY_MISMATCH` עם ההפרש, והבודק משתמש
+בכפתור "תיקון" הידני הקיים כבר היום (`correctPickedItem`,
+`workflow.js:173-189`) כדי לתקן את הכמות בפועל, כולל הערה. זה שומר על
+העיקרון הקיים במערכת: תיקון כמות הוא תמיד פעולה מודעת עם הסבר, לא תוצר
+לוואי שקט של סריקה.
+
+### 1.3 מה שלא משתנה בכלל
+- כפתורי המגע הקיימים בשני המצבים (`✓ ליקטתי הכל`, `✓ מאשר`, `תיקון`
+  וכו') ממשיכים לעבוד בדיוק כמו היום, **גם** כשסריקה פעילה על אותו מסך
+  — כלל קיים במערכת ("הסריקה לא מחליפה, רק מצטרפת").
+- אין מסך "Scan Mode" נפרד — הסריקה פועלת בתוך שני המסכים הקיימים
+  (pick ו-check), עם פס חיווי + צליל, בלי popup (כמו בגרסה הקודמת של
+  המסמך).
 
 ---
 
@@ -46,32 +65,42 @@ Review (אין צורך ב-`UnitsPerScan`, אין צורך בטבלת `product_b
 
 | נושא | החלטה |
 |---|---|
-| ברקוד לפריט | **אחד בלבד** — בוטל הצורך ב-`UnitsPerScan`/`product_barcodes`. הרזולוציה נעשית ישירות מול `order_items_cache.barcode` הקיים, בהיקף ההזמנה הפעילה בלבד |
-| מסך ייעודי לסריקה | **לא ב-V1** — הסורק פועל בתוך מסך הליקוט הקיים (סעיף 1) |
-| מסלול ידני קיים | **לא נוגעים בו בכלל** — `updateItemPick`/`correctPickedItem` נשארים בדיוק כמו שהם. הסריקה היא primitive **נוסף**, לא מחליפה את הקיים |
-| Verification/בדיקה בסריקה | **לא ב-V1.** מסך הבדיקה (`mode='check'`) ממשיך לעבוד ידנית כמו היום. תשתית הסריקה תאפשר את זה בעתיד (dispatch לפי סטטוס), אבל לא נבנה עכשיו — מוסיף היקף בלי דרישה מיידית |
-| PickingSession כישות נפרדת | **לא ב-V1.** משתמשים ב-`claimed_by`/`status` הקיימים; `device_id` נשמר ישירות על כל `pick_event` בלי טבלת session נפרדת |
-| ברקוד שמופיע על יותר משורה אחת באותה הזמנה (נדיר) | הסריקה מוחלת על השורה הראשונה לפי סדר התצוגה (מיקום, ואז מספר שורה) שעוד יש בה כמות חסרה. אם כל השורות עם הברקוד הזה כבר מלאות — `OVER_PICK` |
-| ברקוד לא ידוע לגמרי מול "לא בהזמנה הזו" | **אין הבחנה ב-V1** (אין קטלוג ברקודים גלובלי) — קוד אחד: `NOT_IN_ORDER`. התגובה למלקט זהה בשני המקרים: "הפריט הזה לא בהזמנה" |
-| Concurrency | UPDATE אטומי מוגן ב-WHERE (לא version נפרד לשורה) — מספיק לתהליך Node יחיד (`db.js`), עם תיעוד-כוונה לתאימות Postgres עתידית |
-| Retry אחרי ניתוק | אוטומטי, שקוף למלקט (אותו `clientEventId`), עד 3 ניסיונות תוך כ-2 שניות. רק אחרי שכולם נכשלו — חיווי כשל ברור |
+| ברקוד לפריט | אחד בלבד — כבר סוכם בגרסה קודמת |
+| **סריקה בבדיקה** | **כן, חלק מ-V1** — לא שיפור עתידי (עדכון 18.9.2026) |
+| יעד הבדיקה לכל שורה | `qty_picked` (מה שהמלקט דיווח), **לא** `quantity` המקורית |
+| שורה `missing` בסריקת בדיקה | קוד `NOTHING_TO_VERIFY` — אין סריקה על שורה כזו, בדיוק כמו שאין אישור ידני עליה היום |
+| חריגה בסריקת בדיקה (יותר מ-`qty_picked`) | **לא** מתקנים אוטומטית — קוד `VERIFY_MISMATCH`, הבודק מתקן ידנית דרך "תיקון" הקיים |
+| כפתור "✓ מאשר" הידני בבדיקה | נשאר זמין ועדיין מסמן `checked=1` ישירות בלחיצה אחת (override מלא), בדיוק כמו "✓ ליקטתי הכל" בליקוט. **שינוי קטן נדרש**: כשהוא נלחץ, `qty_verified` יוגדר ל-`qty_picked` (כדי שהמסך לא יראה "מאושר" אבל "נסרקו 2 מתוך 4" — סתירה ויזואלית) |
+| מסך ייעודי לסריקה | לא ב-V1 — נשאר כמו בגרסה הקודמת |
+| מסלול ידני קיים (חוץ מהשינוי הקטן הנ"ל) | לא נוגעים בו |
+| PickingSession כישות נפרדת | לא ב-V1 — `device_id` על כל אירוע סריקה |
+| Concurrency | UPDATE אטומי מוגן ב-WHERE |
+| Retry אחרי ניתוק | אוטומטי עד 3 ניסיונות, אותו `clientEventId` |
 
 ---
 
 ## 3. שינויי מודל נתונים
 
-### 3.1 טבלה חדשה: `pick_events`
-
-תפקיד כפול: **idempotency** (מפתח ה-`UNIQUE`) + **audit מובנה** לכל
-פעולת שינוי כמות (גם סריקה וגם — לשימוש עתידי אופציונלי — ידני).
+### 3.1 `order_items_cache` — עמודה חדשה
 
 ```sql
-CREATE TABLE IF NOT EXISTS pick_events (
+ALTER TABLE order_items_cache ADD COLUMN qty_verified REAL; -- NULL = עוד לא נסרק לבדיקה
+```
+
+### 3.2 טבלה חדשה: `scan_events`
+
+(שינוי שם מ-`pick_events` שהוצע בגרסה הקודמת ל-`scan_events` — כי היא
+משרתת עכשיו גם ליקוט וגם בדיקה, לא רק ליקוט. אין עלות לשינוי השם כי
+עוד לא נכתב קוד.)
+
+```sql
+CREATE TABLE IF NOT EXISTS scan_events (
   event_id        TEXT PRIMARY KEY,
-  client_event_id TEXT NOT NULL,      -- מהלקוח, crypto.randomUUID()
+  client_event_id TEXT NOT NULL,
   order_key       TEXT NOT NULL,
   line_no         INTEGER NOT NULL,
-  barcode         TEXT,               -- מה שנסרק בפועל
+  barcode         TEXT,
+  stage           TEXT NOT NULL CHECK (stage IN ('picking','verification')),
   delta_qty       REAL NOT NULL,
   previous_qty    REAL NOT NULL,
   new_qty         REAL NOT NULL,
@@ -81,214 +110,186 @@ CREATE TABLE IF NOT EXISTS pick_events (
   created_at      TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE (order_key, client_event_id)
 );
-CREATE INDEX IF NOT EXISTS idx_pick_events_order ON pick_events(order_key, line_no);
+CREATE INDEX IF NOT EXISTS idx_scan_events_order ON scan_events(order_key, line_no);
 ```
 
-`source` הושמט מהעיצוב המקורי ב-Architecture Review — ב-V1 הטבלה הזו
-משמשת **רק** את מסלול הסריקה (המסלול הידני לא נוגע בה, ר' החלטה
-בסעיף 2), כך שהעמודה מיותרת כרגע. אם בעתיד המסלול הידני יזרום דרך אותה
-תשתית — מוסיפים אז.
-
-### 3.2 `db.js` — מיגרציה
-
-שורה נוספת ל-`ensureColumn`/יצירת טבלה, באותו דפוס הקיים
-(`db.js:19-55`) — אין שינוי לעמודות קיימות ב-`order_items_cache`.
+`stage` קובע אם `previous_qty`/`new_qty` מתייחסים ל-`qty_picked` או
+ל-`qty_verified` — כדי שהאודיט יהיה חד-משמעי לגבי איזו כמות השתנתה.
 
 ---
 
 ## 4. Domain — `backend/src/workflow.js`
 
-פונקציה חדשה, **לצד** (לא במקום) הפונקציות הקיימות:
+פונקציה חדשה אחת, `scanItem(orderKey, { barcode, clientEventId, userId, deviceId })`,
+שמפנה פנימית לפי `state.status`:
 
-```js
-// scanPickItem(orderKey, { barcode, clientEventId, userId, deviceId })
-// → { resultCode, lineNo?, itemCode?, itemName?, qtyPicked?, quantity?,
-//     remaining?, lineCompleted?, orderProgress?, currentStatus? }
+```
+state.status === 'picking'        → _scanForPicking(...)   -- כמתואר בגרסה הקודמת
+state.status === 'ready_for_check' → _scanForVerification(...) -- חדש, סעיף 4.1
+אחרת                               → { resultCode: 'ORDER_NOT_SCANNABLE', currentStatus: state.status }
 ```
 
-זרימה פנימית (כל השלבים בתוך טרנזקציית `db.transaction`):
+(שינוי שם קוד: `ORDER_NOT_IN_PICKING` → `ORDER_NOT_SCANNABLE`, כי הוא
+עכשיו מכסה גם מצב שבו ההזמנה לא בבדיקה. שני מצבים תקינים לסריקה —
+`picking` ו-`ready_for_check` — לא רק אחד.)
 
-1. **דה-דופליקציה קודם לכל דבר**: `INSERT OR IGNORE INTO pick_events
-   (..., client_event_id, order_key, ...) VALUES (...)` עם ה-`UNIQUE`.
-   אם `changes === 0` — זה replay. שולפים את השורה הקיימת לפי
-   `(order_key, client_event_id)` ומחזירים את `result_code`/הנתונים
-   שנשמרו בה בזמנו, **בלי לגעת בכמות שוב**. (המימוש בפועל: כותבים את
-   ה-`pick_event` בסוף התהליך לא בהתחלה, אבל בודקים existence מראש לפי
-   `client_event_id` — ר' הערת מימוש בסעיף 9).
-2. `state = getState(orderKey)`. אם לא קיים → `ERROR`. אם
-   `state.status !== 'picking'` → `resultCode: 'ORDER_NOT_IN_PICKING'`,
-   `currentStatus: state.status` (כדי שהפרונט יבנה הודעה מדויקת: "ההזמנה
-   כרגע במצב 'בדיקה'" וכו', בלי צורך בקוד נפרד לכל סטטוס).
-3. רזולוציית ברקוד → שורה: `SELECT * FROM order_items_cache WHERE
-   order_key=? AND barcode=? ORDER BY location, line_no`. מסננים לשורות
-   עם `quantity - COALESCE(qty_picked,0) > 0`.
-   - 0 שורות תואמות בכלל → `NOT_IN_ORDER`.
-   - 0 שורות עם יתרה (הכל כבר נלקט) → `OVER_PICK`.
-   - אחרת → השורה הראשונה ברשימה הממוינת.
-4. UPDATE אטומי מוגן:
+### 4.1 `_scanForVerification` — זרימה
+
+1. רזולוציית ברקוד → שורה, **בהיקף ההזמנה הנוכחית**, אותו כלל טיברייק
+   (מיקום ואז מספר שורה) כמו בליקוט — אבל הפעם מתוך שורות עם
+   `pick_status != 'missing'` **וגם** `COALESCE(qty_verified,0) < qty_picked`.
+   - אין שום שורה תואמת עם `pick_status != 'missing'` בכלל (או שהברקוד
+     שייך רק לשורות `missing`) → אם יש התאמה לשורת `missing` ספציפית —
+     `NOTHING_TO_VERIFY`; אחרת `NOT_IN_ORDER`.
+   - יש התאמות אך כולן כבר `qty_verified >= qty_picked` → `VERIFY_MISMATCH`
+     (סריקת יתר).
+2. UPDATE אטומי מוגן:
    ```sql
    UPDATE order_items_cache
-   SET qty_picked = COALESCE(qty_picked,0) + 1,
-       pick_status = CASE WHEN COALESCE(qty_picked,0) + 1 >= quantity THEN 'picked' ELSE 'partial' END,
-       pick_marked_at = datetime('now')
+   SET qty_verified = COALESCE(qty_verified,0) + 1,
+       checked = CASE WHEN COALESCE(qty_verified,0) + 1 >= qty_picked THEN 1 ELSE checked END,
+       pick_marked_at = pick_marked_at -- ללא שינוי, זה שדה של שלב הליקוט
    WHERE order_key = ? AND line_no = ?
-     AND COALESCE(qty_picked,0) + 1 <= quantity
+     AND COALESCE(qty_verified,0) + 1 <= qty_picked
    ```
-   אם `changes === 0` כאן (race נדיר בין הבדיקה לעדכון) → `OVER_PICK`.
-5. כתיבת `pick_events` עם התוצאה הסופית.
-6. חישוב `orderProgress` (`done`/`total` לפי `pick_status IS NOT NULL`
-   מתוך כל שורות ההזמנה — כמו הבדיקה הקיימת ב-`finishPicking`).
-7. `emitChange('order', { order_key, status: state.status })` — **בלי**
-   payload, בדיוק כמו כל שאר הפעולות הקיימות היום.
-8. `resultCode`: `ITEM_COMPLETED` אם השורה הגיעה לכמות המלאה,
-   `ORDER_COMPLETED` אם *כל* שורות ההזמנה טופלו אחרי הסריקה הזו (משדר
-   גם ACCEPTED/ITEM_COMPLETED לפי המקרה — `ORDER_COMPLETED` הוא תוספת
-   מידע, לא מחליף), אחרת `ACCEPTED`.
+   `changes === 0` → `VERIFY_MISMATCH`.
+3. כתיבת `scan_events` עם `stage='verification'`.
+4. `resultCode`: `ITEM_COMPLETED` אם השורה הגיעה ל-`checked=1` דרך
+   הסריקה הזו, `ORDER_COMPLETED` אם *כל* השורות הרלוונטיות (`pick_status
+   != 'missing'`) עכשיו `checked=1`, אחרת `ACCEPTED`.
+
+### 4.2 שינוי קטן ב-`updateItemCheck` הקיים
+
+כשמסמנים `checked=1` ידנית (הכפתור "✓ מאשר" הקיים,
+`workflow.js:150-165`), מוסיפים שורת עדכון אחת: `qty_verified = qty_picked`
+(ורק כשמסמנים `checked=0` בחזרה — לא קיים היום מסלול כזה בפועל, אין
+צורך לטפל). זה השינוי היחיד במסלול הידני הקיים בכל המסמך — נדרש כדי
+שהתצוגה תישאר עקבית (לא "מאושר" עם מונה סריקה חלקי).
 
 ---
 
 ## 5. API — `backend/src/routes.js`
 
+אותו endpoint יחיד מהגרסה הקודמת, ללא שינוי בחתימה — ההקשר (ליקוט/בדיקה)
+נקבע לגמרי בצד השרת לפי סטטוס ההזמנה:
+
 ```
 POST /orders/:key/items/scan
-Auth: requireRole('warehouse', 'warehouse_manager')   -- זהה בדיוק לשאר routes הליקוט
+Auth: requireRole('warehouse', 'warehouse_manager')
 Body: { barcode: string, clientEventId: string, deviceId?: string }
 ```
 
-תגובה (דוגמה — מקרה רגיל):
+תגובה — דוגמה לסריקת בדיקה:
 ```json
 {
   "resultCode": "ACCEPTED",
+  "stage": "verification",
   "lineNo": 3,
   "itemCode": "18813",
   "itemName": "JBL FLIP 7",
+  "qtyVerified": 3,
   "qtyPicked": 4,
-  "quantity": 6,
-  "remaining": 2,
+  "remaining": 1,
   "lineCompleted": false,
-  "orderProgress": { "done": 5, "total": 8 }
+  "orderProgress": { "done": 5, "total": 7 }
 }
 ```
 
-תגובה — מקרה שגיאה:
-```json
-{ "resultCode": "NOT_IN_ORDER", "barcode": "1200130019302" }
-```
+`orderProgress` בשלב בדיקה נספר לפי `checked=1` מתוך השורות שלא `missing`
+(תואם למה ש-`finishCheck` הקיים כבר בודק, `workflow.js:248-251`).
 
-ולידציה בסיסית ב-route (לפני קריאה ל-domain): `barcode`/`clientEventId`
-חייבים להיות מחרוזות לא ריקות — אחרת `400`.
+### Result codes — סט מלא ל-V1 (משני השלבים יחד)
+
+| קוד | ליקוט | בדיקה |
+|---|---|---|
+| `ACCEPTED` | סריקה תקינה, לא הושלמה שורה | סריקה תקינה, לא הושלמה שורה |
+| `ITEM_COMPLETED` | השורה הגיעה לכמות המלאה | השורה הגיעה ל-`checked=1` |
+| `ORDER_COMPLETED` | כל השורות טופלו בליקוט | כל השורות הרלוונטיות אושרו בבדיקה |
+| `NOT_IN_ORDER` | ברקוד לא שייך לשום שורה פתוחה | ברקוד לא שייך לשום שורה רלוונטית לבדיקה |
+| `OVER_PICK` | חריגה מהכמות שהוזמנה | — (לא רלוונטי לשלב זה) |
+| `VERIFY_MISMATCH` | — | סריקה מעבר ל-`qty_picked` שדווח |
+| `NOTHING_TO_VERIFY` | — | ברקוד שייך לשורה שסומנה `missing` |
+| `ORDER_NOT_SCANNABLE` | ההזמנה לא ב-`picking`/`ready_for_check` | (אותו קוד, שני הכיוונים) |
+| `ERROR` | כל שגיאה לא צפויה | כל שגיאה לא צפויה |
+
+(`DUPLICATE_SCAN` **לא** קוד נפרד — replay של `clientEventId` קיים
+פשוט מחזיר את התוצאה המקורית ששמורה ב-`scan_events`, בשקיפות מלאה,
+בלי label מיוחד — כפי שכבר הוחלט בגרסה הקודמת.)
 
 ---
 
 ## 6. Frontend
 
-### 6.1 `frontend/src/scanner/useScannerCapture.js` (חדש)
+### 6.1 `useScannerCapture` — פעיל בשני המצבים
 
-Hook בודד, ללא תלות חיצונית:
+בגרסה הקודמת הכתוב היה "פעיל רק כש-`mode='pick'`" — **מתוקן**: פעיל
+בכל פעם ש-`PickChecklist` מורכב, בין אם `mode='pick'` ובין אם
+`mode='check'`. הקומפוננטה כבר יודעת את המצב שלה — ה-hook לא צריך
+לדעת כלום על pick מול check, הוא רק שולח `{barcode, clientEventId}`
+ל-endpoint אחד; השרת מחליט.
 
-- מאזין ל-`keydown` ברמת `window`, פעיל רק כש-`PickChecklist` ב-mode='pick'
-  מורכב (`useEffect` עם cleanup).
-- **לא לוכד** אם `document.activeElement` הוא `<input>`/`<textarea>`
-  אמיתי (כדי לא להפריע לשדות העריכה הקיימים — "הערה", "כמות אחרת" וכו').
-- צובר תווים; אם המרווח בין תו לתו > ~60ms — מאפס buffer (זו הקלדת
-  אדם, לא סורק). שולח את ה-barcode שנצבר ב-`Enter` (הסורקים שולחים
-  CR/Enter כ-terminator ברירת מחדל).
-- מייצר `clientEventId` חדש (`crypto.randomUUID()`) לכל סריקה גולמית
-  (סריקה חדשה = event חדש; רק retry על אותה סריקה שנכשלה ברשת משתמש
-  שוב באותו id — ר' סעיף 6.3).
+### 6.2 פס חיווי — אותו רכיב, טקסטים שונים לפי `stage`/`resultCode`
 
-### 6.2 שילוב ב-`PickChecklist.jsx`
+- בדיקה, הצלחה: "✓ אומת — 3 מתוך 4"
+- בדיקה, `NOTHING_TO_VERIFY`: "⚠️ הפריט הזה סומן כחסר — אין מה לבדוק"
+- בדיקה, `VERIFY_MISMATCH`: "❌ נסרק יותר ממה שדווח כנלקט — בדקו/תקנו ידנית"
 
-- פס חיווי חדש בראש הרשימה (לא בתוך כרטיס שורה בודד) — מציג את תוצאת
-  הסריקה האחרונה לכ-1.5 שניות: ירוק+שם פריט ל-`ACCEPTED`/`ITEM_COMPLETED`,
-  אדום+הודעה ל-`NOT_IN_ORDER`/`OVER_PICK`/`ORDER_NOT_IN_PICKING`.
-- צליל: `AudioContext` מובנה בדפדפן (טון מסונתז קצר, בלי קובץ סאונד
-  חיצוני) — צליל אחד קצר להצלחה, צליל אחר (נמוך/כפול) לשגיאה.
-- עדכון השורה הרלוונטית ברשימה מהתגובה עצמה (`onItemUpdated`, בדיוק
-  כמו שכפתורי המגע כבר עושים היום, `PickChecklist.jsx:36`) — **בלי**
-  קריאת רענון נוספת.
-
-### 6.3 טיפול בכשל רשת (`frontend/src/api.js`, מורחב)
-
-`api.scanItem(orderKey, {barcode, clientEventId, deviceId})`:
-- על כשל רשת (לא HTTP error מהשרת — timeout/disconnect): retry אוטומטי
-  עד 2 פעמים נוספות (300ms, 800ms), **אותו `clientEventId`**.
-- אם כל הניסיונות נכשלו: פס חיווי אדום קבוע "אין חיבור — הסריקה
-  האחרונה לא אושרה, בדקו את הכמות במסך לפני שממשיכים" (לא נעלם אוטומטית
-  כמו חיווי רגיל — דורש שהעובד יראה את זה).
-- **אין** local queue / החזרה מדומה של "הצליח" — תואם את העיקרון
-  "אמינות על פני illusion של offline" מהדרישה המקורית.
+שאר ההתנהגות (צליל, עדכון שורה מהתגובה, בלי רענון מלא) זהה למתואר
+בליקוט.
 
 ---
 
 ## 7. מה **לא** משתנה
 
-- `updateItemPick`, `correctPickedItem`, `updateItemCheck`, `finishPicking`,
-  `finishCheck` — כל אחד מהם נשאר בדיוק כפי שהוא היום, קוד וUX.
-- מסך הבדיקה (`mode='check'`) — ללא סריקה ב-V1, ממשיך ידני לגמרי.
-- `sigmaIngest.js` — ללא שינוי. הברקוד כבר זורם כמו שהוא.
-- אין שינוי בסכימת ה-RBAC (`requireRole`) — אותם roles קיימים.
+- `finishPicking`, `finishCheck`, `correctPickedItem`, `markItemReplaced`
+  — ללא שינוי.
+- `updateItemCheck` — כמעט ללא שינוי (רק ה-sync הקטן ל-`qty_verified`
+  בסעיף 4.2).
+- אין שינוי ב-RBAC.
 
 ---
 
-## 8. בדיקות
+## 8. בדיקות — תוספות לתוכנית הקודמת
 
-**Unit (`backend/tests`, vitest — לפי התבנית הקיימת):**
-- רזולוציית ברקוד: שורה יחידה תואמת, אין התאמה, כל ההתאמות כבר מלאות,
-  שתי שורות עם אותו ברקוד (אחת מלאה אחת לא).
-- UPDATE אטומי: הגעה בדיוק לכמות המלאה, ניסיון חריגה ממנה.
-- idempotency: אותו `clientEventId` פעמיים → פעם שנייה לא משנה כמות,
-  מחזירה את אותה תוצאה.
-- הזמנה לא ב-`picking` (למשל `ready_for_check`/`closed`) → `ORDER_NOT_IN_PICKING`.
+**Unit:**
+- סריקת בדיקה שמגיעה בדיוק ל-`qty_picked` → `checked=1` אוטומטי.
+- סריקת בדיקה על שורה `missing` → `NOTHING_TO_VERIFY`, בלי לגעת בנתונים.
+- סריקת בדיקה מעבר ל-`qty_picked` → `VERIFY_MISMATCH`, בלי לשנות
+  `qty_verified` מעבר לגבול.
+- לחיצה ידנית על "✓ מאשר" → `qty_verified` מתעדכן ל-`qty_picked`.
 
-**Integration:**
-- שתי "סריקות" מקבילות (בקשות בו-זמנית) על אותה שורה קרוב לגבול הכמות
-  — לוודא שרק אחת מצליחה אם השנייה תחרוג.
-- תרחיש retry: קריאה ש"נכשלת" ברשת (מדומה) ואז נשלחת שוב עם אותו id.
-
-**ידני, עם חומרה אמיתית (לפני שחרור):**
-- סריקה רצופה מהירה (20-30 סריקות ברצף תוך שניות) על הזמנה עם שורות
-  מרובות — לוודא שאין דילוג/כפילות.
-- ניתוק Bluetooth באמצע סריקה — לוודא שההתנהגות לא "תוקעת" את המסך.
-- סריקת ברקוד שלא שייך להזמנה, וסריקה אחרי שהפריט כבר הושלם (OVER_PICK).
-- עבודה מעורבת: כמה שורות בסריקה, כמה שורות בכפתורים ידניים, באותה
-  הזמנה — לוודא שהמצב הסופי עקבי (סה"כ תואם למה שצפוי).
+**ידני:**
+- זרימה מלאה: ליקוט בסריקה → בדיקה בסריקה → `finish-check` → `ready_to_pack`,
+  בלי לגעת במסך בכלל מלבד המעברים בין שלבים.
+- שורה עם חוסר חלקי (`partial`, 4/6) — לוודא שסריקת בדיקה דורשת בדיוק
+  4 סריקות, לא 6.
 
 ---
 
-## 9. תוכנית עבודה (סדר בנייה מוצע)
+## 9. תוכנית עבודה (מעודכנת)
 
 | # | מה | קבצים | תלות |
 |---|---|---|---|
-| 1 | טבלת `pick_events` + מיגרציה | `schema.sql`, `db.js` | — |
-| 2 | `scanPickItem()` ב-domain + unit tests | `workflow.js`, `backend/tests/` | 1 |
-| 3 | Route `POST /orders/:key/items/scan` | `routes.js` | 2 |
-| 4 | `useScannerCapture` hook | `frontend/src/scanner/useScannerCapture.js` (חדש) | — (עצמאי, אפשר במקביל ל-1-3) |
-| 5 | `api.scanItem` + retry logic | `frontend/src/api.js` | 3 |
-| 6 | שילוב ב-`PickChecklist` (פס חיווי, צליל, חיבור ה-hook) | `PickChecklist.jsx`, `styles.css` | 4, 5 |
-| 7 | בדיקות אינטגרציה (concurrency, idempotency) | `backend/tests/` | 3 |
-| 8 | בדיקה ידנית עם סורק Bluetooth אמיתי | — | 6 |
-
-שלבים 1-3 (backend) ו-4 (frontend hook) יכולים להתקדם במקביל. שלב 6
-תלוי בשניהם.
-
-**הערת מימוש לשלב 2** (למתכנת בפועל, לא שינוי באיפיון): כדי שדה-דופליקציה
-תעבוד נכון גם אם ה-UPDATE על `order_items_cache` נכשל (למשל `OVER_PICK`),
-יש לכתוב שורת `pick_events` **בכל מקרה** (גם לתוצאות שגיאה), לא רק
-להצלחות — אחרת retry על סריקה שהניבה `OVER_PICK` יבצע את הבדיקה מחדש
-בכל פעם (לא מזיק כי היא idempotent מטבעה, אבל עדיף sto לוגיקה אחידה:
-כל `client_event_id` נכתב פעם אחת, לא משנה מה התוצאה).
+| 1 | `scan_events` + עמודת `qty_verified` | `schema.sql`, `db.js` | — |
+| 2 | `scanItem()` + `_scanForPicking`/`_scanForVerification` + unit tests | `workflow.js`, `backend/tests/` | 1 |
+| 3 | שינוי קטן ב-`updateItemCheck` (sync `qty_verified`) | `workflow.js` | 1 |
+| 4 | Route `POST /orders/:key/items/scan` | `routes.js` | 2, 3 |
+| 5 | `useScannerCapture` hook | `frontend/src/scanner/` (חדש) | — (מקביל ל-1-4) |
+| 6 | `api.scanItem` + retry | `frontend/src/api.js` | 4 |
+| 7 | שילוב ב-`PickChecklist` — שני המצבים | `PickChecklist.jsx`, `styles.css` | 5, 6 |
+| 8 | בדיקות אינטגרציה (concurrency, idempotency, שני השלבים) | `backend/tests/` | 4 |
+| 9 | בדיקה ידנית עם סורק אמיתי — כולל זרימה מלאה ליקוט+בדיקה | — | 7 |
 
 ---
 
-## 10. שאלות פתוחות (לא חוסמות, אך שווה לדעת התשובה לפני שלב 8)
+## 10. שאלות פתוחות (לא חוסמות)
 
-- יש ברשותך כבר סורק Bluetooth HID ספציפי לבדיקה, או שצריך להזמין אחד
-  לפני שאפשר לבצע את הבדיקה הידנית בסעיף 8?
-- האם לבדוק גם דגם מכשיר ספציפי (טאבלט/מותג) לפני השחרור, או שכל דפדפן
-  מודרני מספיק כהנחת עבודה?
+- יש כבר סורק Bluetooth HID בפועל לבדיקה?
+- מצב שבו כמה שורות `partial` באותה הזמנה — יש עדיפות סדר בדיקה
+  (למשל תמיד לפי מיקום, כמו בליקוט), או שזה מספיק כברירת מחדל בלי
+  לשאול?
 
 ---
 
-**המסמך הזה מוכן לאישור.** לפי הבקשה שלך — לא מתחילים בשום כתיבת קוד
-עד אישור מפורש על תוכנית העבודה בסעיף 9.
+**המסמך הזה מוכן לאישור.** לא מתחילים בכתיבת קוד עד אישור מפורש על
+תוכנית העבודה בסעיף 9.
