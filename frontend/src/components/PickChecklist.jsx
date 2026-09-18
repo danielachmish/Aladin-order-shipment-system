@@ -172,8 +172,12 @@ export default function PickChecklist({ mode, order, items, onItemUpdated, busy,
 
   return (
     <div>
-      {scanBanner && (
+      {scanBanner ? (
         <div className={`scan-banner ${scanBanner.kind}`}>{scanBanner.text}</div>
+      ) : (
+        // אינדיקטור קבוע — כדי שיהיה ברור בלי לנחש שהסריקה פעילה במסך הזה
+        // (הלכידה תמיד פעילה כל עוד PickChecklist מורכב, אין "הפעלה" נפרדת).
+        <div className="scan-banner ready">📡 מוכן לסריקה</div>
       )}
       {sorted.map((it) => {
         const isMissing = it.pick_status === 'missing';

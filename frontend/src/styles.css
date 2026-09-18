@@ -248,6 +248,7 @@ button { font-family: inherit; }
 }
 .scan-banner.success { background: #e6f4ea; color: var(--green); }
 .scan-banner.error { background: #fdecea; color: var(--red); }
+.scan-banner.ready { background: var(--teal-light); color: var(--teal-dark); font-weight: 500; font-size: 13px; }
 
 /* כרטיס פריט בליקוט/בדיקה — עוצב מחדש לפי בקשת דניאל 17.9.2026 ("לא ברור
    בכלל, אני צריך בולט: מיקום פריט, שם פריט, כמות שהוזמנה"): מיקום כשורה
