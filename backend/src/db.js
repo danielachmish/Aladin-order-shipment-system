@@ -54,5 +54,8 @@ ensureColumn('order_items_cache', 'replaced_to', 'TEXT');
 ensureColumn('order_items_cache', 'replaced_qty', 'REAL');
 ensureColumn('order_items_cache', 'replaced_confirmed', 'INTEGER NOT NULL DEFAULT 0');
 ensureColumn('order_items_cache', 'qty_verified', 'REAL'); // ר' BARCODE_SCANNING_SPEC.md
+ensureColumn('order_items_cache', 'picked_via', 'TEXT');
+ensureColumn('order_items_cache', 'manual_pick_approved_by', 'TEXT');
+ensureColumn('order_items_cache', 'manual_pick_approved_at', 'TEXT');
 
 module.exports = { db, isNew };

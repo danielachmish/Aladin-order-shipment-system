@@ -342,6 +342,9 @@ export default function PickChecklist({ mode, order, items, onItemUpdated, busy,
               <div className="pick-item-qty">&times;{it.quantity}</div>
             </div>
             <div className="pick-item-barcode">{it.item_code}{it.barcode ? ` · ${it.barcode}` : ''}</div>
+            {it.picked_via === 'manual' && it.pick_status !== 'missing' && !it.manual_pick_approved_at && (
+              <span className="badge">⏳ ידני — ימתין לאישור מנהל</span>
+            )}
 
             {bulkPending && bulkPending.lineNo === it.line_no && (
               <div className="pick-edit-row bulk-qty-row" onClick={(e) => e.stopPropagation()}>

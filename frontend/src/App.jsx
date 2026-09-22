@@ -8,6 +8,7 @@ import PendingOrders from './pages/PendingOrders.jsx';
 import Shipments from './pages/Shipments.jsx';
 import Dashboard from './components/Dashboard.jsx';
 import ManagementTools from './pages/ManagementTools.jsx';
+import CheckApprovals from './pages/CheckApprovals.jsx';
 import InventoryShortages from './pages/InventoryShortages.jsx';
 import BackInStock from './pages/BackInStock.jsx';
 import MyShortages from './pages/MyShortages.jsx';
@@ -113,6 +114,7 @@ export default function App() {
     isManager && { key: 'inventory', icon: '📉', label: 'חוסרי מלאי' },
     isManager && { key: 'backinstock', icon: '🔄', label: 'חזר למלאי' },
     user.role === 'agent' && { key: 'myshortages', icon: '📉', label: 'החוסרים שלי' },
+    isManager && { key: 'check-approvals', icon: '🧾', label: 'אישורי בדיקות' },
     isManager && { key: 'management', icon: '🛠️', label: 'כלי ניהול' },
   ].filter(Boolean);
 
@@ -187,6 +189,8 @@ export default function App() {
             <BackInStock />
           ) : tab === 'myshortages' ? (
             <MyShortages />
+          ) : tab === 'check-approvals' ? (
+            <CheckApprovals onOpenOrder={openOrder} />
           ) : (
             <ManagementTools user={user} />
           )}

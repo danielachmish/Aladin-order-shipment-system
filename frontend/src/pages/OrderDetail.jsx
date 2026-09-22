@@ -38,6 +38,7 @@ export default function OrderDetail({ user, orderKey, onBack }) {
   const [palletCount, setPalletCount] = useState('');
   const [linkedWarning, setLinkedWarning] = useState(null);
   const [pendingAdditionWarning, setPendingAdditionWarning] = useState(null);
+  const [manualPickWarning, setManualPickWarning] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
 
   // חיפוש הזמנה לקישור — גם לפי מספר וגם לפי שם לקוח (בקשת דניאל 14.9.2026:
@@ -117,11 +118,13 @@ export default function OrderDetail({ user, orderKey, onBack }) {
   // התראה מוקדמת על קישור הזמנות — ברגע "סיום בדיקה" (לא ברגע "סיום אריזה",
   // שזה כבר מאוחר מדי — הקרטון כבר סגור). ר' בקשת דניאל 17.9.2026: האורז
   // צריך לדעת *לפני* שהוא סוגר קרטון שיש הזמנה מקושרת שעדיין לא הגיעה לשלב.
-  async function handleFinishCheck() {
+  // משותף בין "אישרתי בדיקה" הרגיל ו"דלג על שלב הבדיקה" — שתי הפעולות
+  // מעבירות לאותו סטטוס (ready_to_pack) וחסומות באותן חסימות. ר' בקשת דניאל 22.9.2026.
+  async function performCheckTransition(apiCall) {
     setBusy(true);
     setError('');
     try {
-      await api.finishCheck(orderKey, version);
+      await apiCall();
       const fresh = await api.getOrder(orderKey);
       setData(fresh);
       const behind = (fresh.linked_orders || []).filter(
@@ -142,11 +145,26 @@ export default function OrderDetail({ user, orderKey, onBack }) {
         setPendingAdditionWarning(order.pending_addition_note);
         return;
       }
+      // פריט שנלקט ידנית עוד לא אושר ע"י מנהל — חוסם גם "אישרתי בדיקה" וגם
+      // "דלג" כאחד. ר' workflow.js assertManualPicksApproved, בקשת דניאל 22.9.2026.
+      if (e.data?.code === 'manual_pick_pending') {
+        setBusy(false);
+        setManualPickWarning(e.message);
+        return;
+      }
       await load(); // ר' הערה ב-act() — סדר הפוך כדי שהשגיאה לא תימחק
       setError(e.message);
     } finally {
       setBusy(false);
     }
+  }
+
+  async function handleFinishCheck() {
+    await performCheckTransition(() => api.finishCheck(orderKey, version));
+  }
+
+  async function handleSkipCheck() {
+    await performCheckTransition(() => api.skipCheck(orderKey, version));
   }
 
   async function confirmAdditionAndFinishCheck() {
@@ -344,6 +362,13 @@ export default function OrderDetail({ user, orderKey, onBack }) {
           אישרתי בדיקה — מוכן לאריזה{!allChecked ? ` (${checkDoneCount}/${items.length})` : ''}
         </button>
       )}
+      {isWarehouse && isChecking && (
+        // בדיקה נשארת אופציונלית — "דלג" זמין תמיד, לא רק כשהכל נסרק
+        // (חסימת אישור-מנהל, אם רלוונטית, תופיע בלחיצה עצמה). ר' בקשת דניאל 22.9.2026.
+        <button className="action-btn secondary" disabled={busy} onClick={handleSkipCheck}>
+          ⏩ דלג על שלב הבדיקה
+        </button>
+      )}
       {isWarehouse && order.status === 'ready_to_pack' && (
         <button className="action-btn" disabled={busy} onClick={() => setShowPack(true)}>סיום אריזה</button>
       )}
@@ -533,6 +558,23 @@ export default function OrderDetail({ user, orderKey, onBack }) {
               <button className="action-btn" disabled={busy} onClick={confirmAdditionAndFinishCheck}>✓ התוספת התקבלה — המשך</button>
               <button className="action-btn secondary" onClick={() => setPendingAdditionWarning(null)}>סגירה</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {manualPickWarning && (
+        // אין כפתור "אישור והמשך" כמו בחלון התוספת — רק מנהל במסך "אישורי
+        // בדיקות" יכול לשחרר את החסימה הזו. ר' בקשת דניאל 22.9.2026.
+        <div className="modal-backdrop" onClick={() => setManualPickWarning(null)}>
+          <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+            <h3>🚫 ממתין לאישור מנהל</h3>
+            <div className="meta" style={{ marginBottom: 8 }}>
+              {manualPickWarning}
+              <br /><br />
+              פריטים שנלקטו ידנית (לא בסריקת ברקוד) חייבים אישור מנהל מחסן
+              לפני שההזמנה יכולה לעבור לאריזה. מנהל יכול לאשר מהמסך "אישורי בדיקות".
+            </div>
+            <button className="action-btn warn" onClick={() => setManualPickWarning(null)}>הבנתי</button>
           </div>
         </div>
       )}

@@ -68,6 +68,11 @@ CREATE TABLE IF NOT EXISTS order_items_cache (
   replaced_qty REAL, -- כמות התחליף (ברירת מחדל: הכמות שהייתה חסרה, ניתן לשינוי)
   replaced_confirmed INTEGER NOT NULL DEFAULT 0, -- 1 = הבודק אימת בפועל שהתחליף (פריט+כמות) נכון — רק אז זו הוראה סופית לחשבונית
   qty_verified REAL, -- כמות שאומתה בפועל בסריקת בדיקה; NULL = עוד לא נסרקה לבדיקה. היעד הוא qty_picked, לא quantity (ר' BARCODE_SCANNING_SPEC.md)
+  picked_via  TEXT,    -- 'scan' | 'manual' | NULL (עוד לא לוקט). נקבע ע"י scanForPicking ('scan'),
+                        -- updateItemPick/correctPickedItem ('manual' — override אנושי, גם אם היה סרוק
+                        -- קודם). NULL גם לשורה שסומנה 'missing' אוטומטית — לא נגעה בה יד אדם בכלל.
+  manual_pick_approved_by TEXT, -- מנהל מחסן/מנהל מערכת שאישר שורה שנלקטה ידנית — NULL = ממתין
+  manual_pick_approved_at TEXT, -- מתי אושרה; מתאפס ל-NULL אוטומטית בכל תיקון חוזר לשורה
   PRIMARY KEY (order_key, line_no)
 );
 
