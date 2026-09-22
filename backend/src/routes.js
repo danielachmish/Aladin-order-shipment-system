@@ -1,7 +1,7 @@
 const express = require('express');
 const crypto = require('crypto');
 const { db } = require('./db');
-const { login, authMiddleware, requireRole } = require('./auth');
+const { login, authMiddleware, requireRole, hashPassword } = require('./auth');
 const wf = require('./workflow');
 const { queueForStatus, positionInQueue } = require('./queue');
 const urgent = require('./urgentRequests');
@@ -982,7 +982,6 @@ router.post('/admin/sigma-test/:companyId/:sidra/:num', requireRole('system_admi
 });
 
 // ---------- ניהול משתמשים (מנהל בלבד) ----------
-// MOCK: סיסמאות טקסט-גלוי בהתאם לשאר המערכת (ר' seed.js/auth.js) — לא לפרודקשן אמיתי.
 const VALID_ROLES = ['agent', 'warehouse', 'warehouse_manager', 'system_admin'];
 
 router.get('/users', requireRole('warehouse_manager', 'system_admin'), (req, res) => {
@@ -999,7 +998,7 @@ router.post('/users', requireRole('warehouse_manager', 'system_admin'), (req, re
   try {
     const user_id = `u_${crypto.randomBytes(6).toString('hex')}`;
     db.prepare(`INSERT INTO users (user_id, username, display_name, password, role) VALUES (?, ?, ?, ?, ?)`)
-      .run(user_id, username, display_name, password, role);
+      .run(user_id, username, display_name, hashPassword(password), role);
     res.json({ ok: true, user: { user_id, username, display_name, role, is_active: 1 } });
   } catch (e) {
     if (String(e.message).includes('UNIQUE')) return res.status(400).json({ error: 'שם המשתמש כבר תפוס' });
@@ -1025,7 +1024,7 @@ router.put('/users/:id', requireRole('warehouse_manager', 'system_admin'), (req,
         sigma_agent_id = CASE WHEN ? THEN ? ELSE sigma_agent_id END
       WHERE user_id = ?
     `).run(
-      display_name || null, password || null, role || null,
+      display_name || null, password ? hashPassword(password) : null, role || null,
       is_active === undefined ? null : (is_active ? 1 : 0),
       sigma_agent_id !== undefined ? 1 : 0, sigma_agent_id === '' ? null : (sigma_agent_id ?? null),
       id

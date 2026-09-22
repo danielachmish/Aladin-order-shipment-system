@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const { db } = require('./db');
 const { seedOrders } = require('./sigmaBridgeMock');
 const { sigma: sigmaCfg } = require('./config');
+const { hashPassword } = require('./auth');
 
 function uid(prefix) {
   return `${prefix}_${crypto.randomBytes(6).toString('hex')}`;
@@ -13,11 +14,13 @@ function upsertUser({ user_id, username, display_name, password, role }) {
   db.prepare(`
     INSERT INTO users (user_id, username, display_name, password, role)
     VALUES (?, ?, ?, ?, ?)
-  `).run(user_id, username, display_name, password, role);
+  `).run(user_id, username, display_name, hashPassword(password), role);
 }
 
 function run() {
-  // MOCK: סיסמאות טקסט-גלוי לצורך דמו בלבד. ר' auth.js.
+  // סיסמאות דמו פשוטות ("1234") לצורך התחלה מהירה — נשמרות מגובבות (bcrypt),
+  // אבל עדיין כדאי להחליף אותן לסיסמאות אמיתיות לפני שימוש בפועל עם צוות
+  // אמיתי. ר' auth.js, בקשת דניאל 22.9.2026.
   upsertUser({ user_id: uid('u'), username: 'agent1', display_name: 'נועה כהן (סוכנת)', password: '1234', role: 'agent' });
   upsertUser({ user_id: uid('u'), username: 'agent2', display_name: 'איתי לוי (סוכן)', password: '1234', role: 'agent' });
   upsertUser({ user_id: uid('u'), username: 'warehouse', display_name: 'מחסן', password: '1234', role: 'warehouse' });

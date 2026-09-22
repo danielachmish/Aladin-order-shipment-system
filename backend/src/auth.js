@@ -1,6 +1,19 @@
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
+const bcrypt = require('bcryptjs');
 const { db } = require('./db');
+
+// תיקון אבטחה (בקשת דניאל 22.9.2026): סיסמאות לא נשמרות יותר כטקסט גלוי.
+// hashPassword משמש בכל מקום שכותב סיסמה (יצירת/עדכון משתמש, seed).
+// isHashed מזהה אם ערך קיים כבר עבר גיבוב (מתחיל ב-$2a$/$2b$/$2y$, הפורמט
+// הסטנדרטי של bcrypt) — כדי להבדיל בין משתמשים שכבר הועברו לבין חשבונות
+// ישנים שעדיין שומרים טקסט גלוי מלפני התיקון הזה.
+function hashPassword(plain) {
+  return bcrypt.hashSync(plain, 10);
+}
+function isHashed(value) {
+  return typeof value === 'string' && /^\$2[aby]\$/.test(value);
+}
 
 // תיקון אבטחה (סקירה 14.9.2026): הסוד הקבוע הישן ('aladin-dev-secret-do-not-use-in-prod')
 // היה גלוי בקוד/בהיסטוריית git — אם JWT_SECRET לא הוגדר בסביבה (משתנה סביבה חסר,
@@ -16,7 +29,18 @@ const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(48).toString('he
 
 function login(username, password) {
   const user = db.prepare('SELECT * FROM users WHERE username = ? AND is_active = 1').get(username);
-  if (!user || user.password !== password) return null;
+  if (!user) return null;
+
+  if (isHashed(user.password)) {
+    if (!bcrypt.compareSync(password, user.password)) return null;
+  } else {
+    // חשבון ישן מלפני המעבר ל-hash — עדיין טקסט גלוי. אם הסיסמה נכונה,
+    // מגבבים ושומרים עכשיו (מעבר הדרגתי, בלי צורך ב-migration נפרד לכל
+    // המשתמשים בבת אחת). ר' בקשת דניאל 22.9.2026.
+    if (user.password !== password) return null;
+    db.prepare('UPDATE users SET password = ? WHERE user_id = ?').run(hashPassword(password), user.user_id);
+  }
+
   const token = jwt.sign(
     { sub: user.user_id, role: user.role, name: user.display_name },
     JWT_SECRET,
@@ -47,4 +71,4 @@ function requireRole(...roles) {
   };
 }
 
-module.exports = { login, authMiddleware, requireRole, JWT_SECRET };
+module.exports = { login, authMiddleware, requireRole, JWT_SECRET, hashPassword };
