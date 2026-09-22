@@ -5,41 +5,70 @@
 
 ר' [PLAN.md](PLAN.md) לתוכנית העבודה המלאה וסטטוס כל שלב.
 
-## פריסה — חי ועובד מקצה לקצה
+## פריסה — Cloudways (חי)
 
-| חלק | כתובת | פלטפורמה |
+| חלק | כתובת | הערות |
 |---|---|---|
-| Frontend | **https://aladin-frontend-kappa.vercel.app** | Vercel |
-| Backend | **https://aladin-backend-6vdq.onrender.com** | Render (שירות `aladin-backend`, free plan) |
+| Frontend + Backend | **https://s.aladincorp.com** (לוודא — ר' גם `orders.aladincorp.com` ב-`backend/src/config.js` corsOrigins) | שרת Cloudways יחיד, לא שתי פלטפורמות נפרדות כמו קודם |
 
-התחברות (משתמשי דמו למטה) עובדת בפועל דרך הכתובת של ה-frontend, מכל מקום.
+התחברות (משתמשי דמו למטה) עובדת בפועל דרך הכתובת הזו.
 
-⚠️ **מגבלות שכדאי לדעת:**
-- **הריפו הפך לציבורי** (היה פרטי) — זה מה שאפשר ל-Render לגשת אליו בלי
-  תהליך אישור GitHub App נוסף. אין בו סודות (`.env` לא נכלל), אבל אם רוצים
-  אותו שוב פרטי, צריך לחבר את ה-GitHub App של Render לריפו הספציפי (יש שלב
-  ידני בדפדפן שדורש מסך, לא רק נייד).
-- **תוכנית החינמית של Render**: הדיסק לא persistent — `aladin.db` (SQLite)
-  מתאפס בכל דיפלוי/הפעלה מחדש, והשירות "נרדם" אחרי 15 דקות ללא תנועה (קם
-  מחדש בבקשה הבאה עם כמה שניות השהיה). לשימוש אמיתי מתמשך: דיסק persistent
-  בתשלום קטן ב-Render, או מעבר ל-Postgres מנוהל — דורש שינוי קוד, לא נעשה.
-- כדי לעדכן משתני סביבה (Sigma/UPS) ב-backend: Render Dashboard → השירות
-  `aladin-backend` → Environment.
-- פריסה מחדש של ה-backend קורית אוטומטית בכל push ל-`main` (autoDeploy).
-  לפריסה מחדש של ה-frontend אחרי שינוי: `cd frontend && vercel --prod`.
+⚠️ **הארכיטקטורה על Cloudways שונה מ-Render/Vercel הקודם** — זה שרת פיזי אחד
+שמארח גם את קבצי ה-frontend וגם את תהליך ה-backend, לא שתי פלטפורמות נפרדות:
+
+- **Frontend**: תוצר ה-build (`cd frontend && npm run build`) מועלה ישירות
+  לתיקיית ה-public/htdocs של האתר בשרת Cloudways.
+- **Backend**: תהליך Node/Express נפרד שרץ על השרת (`backend/src/server.js`),
+  מאזין על פורט פנימי (`PORT` ב-`backend/.env`, ברירת מחדל 4310 — לוודא מול
+  איך שהוגדר בפועל, כי `frontend/public/api.php` מצפה ל-4311). איך שהתהליך
+  הזה מופעל/מתאתחל (PM2, Supervisor וכו') תלוי בהגדרה הספציפית בפאנל
+  Cloudways — לא חלק מהריפו.
+- **PHP-proxy shim ל-API**: אחסון Cloudways סטנדרטי מעביר ל-Node רק בקשות
+  שמסתיימות ב-`.php` (Nginx→PHP-FPM), ומגיש כל השאר כקבצים סטטיים —
+  כלומר בקשה ישירה ל-`/api/...` לא בהכרח מגיעה לתהליך ה-Node. הפתרון בקוד:
+  `frontend/public/api.php` (PHP, cURL) מעביר כל קריאת API אל
+  `http://127.0.0.1:<PORT>/api/...`, ו-`frontend/src/api.js` עובר לנתיב הזה
+  (`/api.php?_p=<path>`) כש-`VITE_API_PHP_SHIM=true` מוגדר בזמן ה-build של
+  ה-frontend. **חשוב**: תחת המצב הזה אין WebSocket חי — PHP-FPM לא תומך
+  בחיבור duplex פתוח (ר' `frontend/src/ws.js`) — האפליקציה עובדת דרך REST
+  בלבד, בלי רענון אוטומטי; המסך יראה "אין חיבור" ולא "מחובר בזמן אמת".
+  אם המסך *כן* מראה "מחובר בזמן אמת", סימן שה-build הנוכחי לא בנוי עם
+  `VITE_API_PHP_SHIM=true` וש-WebSocket מצליח להתחבר ישירות ל-`/api/live` —
+  כלומר יש כנראה הגדרת proxy נוספת בפאנל Cloudways (מעבר ל-`.htaccess`
+  שבריפו) שמעבירה גם בקשות `/api/*` רגילות ישירות ל-Node. כדאי לוודא בפאנל
+  מה בדיוק מוגדר, כדי לדעת אילו נתיבים (כולל אלה שה-bridge המקומי דוחף
+  אליהם) עוברים ישירות ואילו רק דרך ה-shim.
+- **לעדכן משתני סביבה** (Sigma/UPS/JWT וכו') ב-backend: לערוך את
+  `backend/.env` **על השרת עצמו** (SSH או File Manager ב-Cloudways) —
+  אין כאן Dashboard כמו ב-Render. עריכת הקובץ בלבד לא מספיקה: התהליך כבר
+  טען את משתני הסביבה בעלייה (`require('dotenv').config()` ב-`config.js`),
+  אז צריך גם **להפעיל מחדש** את תהליך ה-Node אחרי כל שינוי.
+- **הדיסק persistent** ב-Cloudways (בניגוד ל-Render free) — `aladin.db`
+  (SQLite) לא מתאפס בין הפעלות/דיפלוי, אבל גם אין גיבוי אוטומטי מובנה;
+  כדאי לגבות את `backend/aladin.db` ידנית לפני שינויים גדולים.
+- אין כרגע autoDeploy מ-`main` — עדכון קוד בפועל דורש להעלות מחדש את
+  הקבצים (build של frontend + קבצי backend) לשרת Cloudways ידנית.
 
 ## חיבור Sigma אמיתי — [`bridge/`](bridge/README.md)
 
-ה-backend בענן (Render) **לא יכול ולא צריך** לגשת ישירות ל-SQL Server הפיזי
-שלך — זה גם לא בטוח (חשיפת SQL לאינטרנט) וגם לא מה שהאפיון ממליץ. במקום זה,
+ה-backend בענן **לא יכול ולא צריך** לגשת ישירות ל-SQL Server הפיזי שלך —
+זה גם לא בטוח (חשיפת SQL לאינטרנט) וגם לא מה שהאפיון ממליץ. במקום זה,
 תיקיית [`bridge/`](bridge) היא תוכנה קטנה שרצה **על השרת הפיזי שלך** (איפה
 שסיגמא כבר יושבת), קוראת הזמנות מקומית, ודוחפת אותן ל-backend דרך HTTPS
 יוצא בלבד — בדיוק כמו הארכיטקטורה בסעיף 7 של האפיון.
 
 הוראות מלאות ב-[bridge/README.md](bridge/README.md). בקצרה: להתקין Node.js
 על השרת הפיזי, להעתיק את תיקיית `bridge/` לשם, למלא את פרטי ה-SQL Server
-המקומי ב-`bridge/.env` (הסוד המשותף מול השרת בענן כבר ממולא מראש), ולהריץ
-`npm run install-service` כמנהל כדי שזה ירוץ קבוע ברקע.
+המקומי ב-`bridge/.env`, ולהריץ `npm run install-service` כמנהל כדי שזה ירוץ
+קבוע ברקע.
+
+⚠️ **קריטי בפריסת Cloudways**: `BRIDGE_TARGET_URL` ב-`bridge/.env` חייב
+להצביע על הכתובת הנכונה של ה-backend **כפי שהיא נגישה בפועל מבחוץ**. אם
+ה-backend על Cloudways נגיש רק דרך ה-PHP shim (ר' מעלה), הכתובת צריכה
+להיות בפורמט `https://<domain>/api.php?_p=/admin/sigma-sync` ולא
+`https://<domain>/api/admin/sigma-sync` הרגיל (שמצביע כברירת מחדל על
+Render הישן ב-`.env.example`) — אחרת הבקשות מה-bridge לא מגיעות בכלל
+לתהליך ה-Node, וזה נראה כמו מערכת "מחוברת" אבל בלי הזמנות.
 
 ## מה זה כולל בפועל (לא רק תיאור)
 
