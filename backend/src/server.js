@@ -18,7 +18,11 @@ app.set('trust proxy', 1);
 // תיקון אבטחה (סקירה 14.9.2026): הוגבל למקורות ידועים (ר' config.js corsOrigins)
 // במקום cors() פתוח שקיבל בקשות מכל אתר באינטרנט.
 app.use(cors({ origin: corsOrigins }));
-app.use(express.json());
+// גבול מוגדל (במקום ברירת המחדל 100kb): קודם ל-middleware הזה, מה שגרם ל-
+// גבולות הגדולים יותר שמוגדרים per-route ב-routes.js (10mb/25mb לסנכרוני Sigma)
+// לא לתפוס בפועל — ה-parser הגלובלי כבר דוחה גוף גדול לפני שההגדרה הספציפית
+// למסלול מקבלת סיכוי לרוץ (התגלה בפריסת Cloudways: 413 על סנכרון ספקים).
+app.use(express.json({ limit: '25mb' }));
 
 // PHP-proxy shim לפריסת Cloudways: ה-nginx שם מעביר ל-Apache רק בקשות
 // שמסתיימות ב-.php (ר' frontend/public/.htaccess), אז הבקשות מגיעות כ-
