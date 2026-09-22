@@ -17,6 +17,30 @@ function sortByLocation(items) {
   });
 }
 
+// זיהוי מקומי (בלי בקשת רשת) לאיזו שורה ברקוד שייך — לצורך "הזנת כמות"
+// (בקשת דניאל 22.9.2026): סורקים פעם אחת לזיהוי הפריט, ואז מקלידים כמות,
+// במקום לדרוש סריקה נפרדת לכל יחידה מתוך כמות גדולה. אותו כלל טיברייק
+// בדיוק כמו בשרת (workflow.js scanForPicking/scanForVerification) — מיקום
+// ואז מספר שורה — כדי שהתוצאה תואמת למה שסריקה רגילה הייתה בוחרת.
+function resolveBarcodeLocally(barcode, mode, items) {
+  const candidates = sortByLocation(items.filter((it) => it.barcode === barcode));
+  if (candidates.length === 0) return { status: 'NOT_IN_ORDER' };
+
+  if (mode === 'pick') {
+    const withRemaining = candidates.filter((it) => (it.quantity || 0) - (it.qty_picked || 0) > 0);
+    if (withRemaining.length === 0) return { status: 'OVER_PICK', item: candidates[0] };
+    const target = withRemaining[0];
+    return { status: 'OK', item: target, suggested: (target.quantity || 0) - (target.qty_picked || 0) };
+  }
+
+  const verifiable = candidates.filter((it) => it.pick_status !== 'missing');
+  if (verifiable.length === 0) return { status: 'NOTHING_TO_VERIFY', item: candidates[0] };
+  const withRemaining = verifiable.filter((it) => (it.qty_picked || 0) - (it.qty_verified || 0) > 0);
+  if (withRemaining.length === 0) return { status: 'VERIFY_MISMATCH', item: verifiable[0] };
+  const target = withRemaining[0];
+  return { status: 'OK', item: target, suggested: (target.qty_picked || 0) - (target.qty_verified || 0) };
+}
+
 // טקסט חיווי לפס העליון לפי תוצאת סריקה — ר' BARCODE_SCANNING_SPEC.md סעיפים
 // 5, 6.2. success/error קובע צבע+צליל; לא מייצרים popup בשום מקרה.
 function describeScanResult(result) {
@@ -59,6 +83,18 @@ export default function PickChecklist({ mode, order, items, onItemUpdated, busy,
   const [scanBanner, setScanBanner] = useState(null); // { kind: 'success'|'error', text, sticky? }
   const bannerTimerRef = useRef(null);
 
+  // "הזנת כמות" (בקשת דניאל 22.9.2026): לפריטים בכמות גדולה — לא לדרוש
+  // סריקה נפרדת לכל יחידה. bulkArmed = מוכן שהסריקה הבאה תפתח קלט כמות
+  // במקום להוסיף 1 מיד; bulkPending = איזו שורה ספציפית מחכה לאישור כמות.
+  const [bulkArmed, setBulkArmed] = useState(false);
+  const [bulkPending, setBulkPending] = useState(null); // { lineNo, barcode }
+  const [bulkQtyInput, setBulkQtyInput] = useState('');
+
+  // חלונות חסימה אמיתיים (בקשת דניאל 22.9.2026) — לא באנר חולף: פריט שלא
+  // שייך להזמנה, או סריקת בדיקה שחורגת ממה שדווח כנלקט. חייבים "הבנתי"
+  // מפורש לפני שאפשר להמשיך לסרוק (ר' useScannerCapture למטה, enabled).
+  const [scanWarning, setScanWarning] = useState(null); // { type: 'not_in_order'|'mismatch', ... }
+
   useEffect(() => () => { if (bannerTimerRef.current) clearTimeout(bannerTimerRef.current); }, []);
 
   function showBanner(kind, text, sticky = false) {
@@ -69,14 +105,47 @@ export default function PickChecklist({ mode, order, items, onItemUpdated, busy,
     }
   }
 
+  // משותף לסריקה רגילה ול"הזנת כמות" — VERIFY_MISMATCH/NOT_IN_ORDER פותחים
+  // חלון חסימה, לא באנר חולף (עלולים להיבלע בקצב סריקה מהיר).
+  function processScanResult(res) {
+    if (res.item) onItemUpdated(res.item);
+    if (res.resultCode === 'VERIFY_MISMATCH') {
+      playErrorSound();
+      setScanWarning({ type: 'mismatch', item: res.item || null });
+      return;
+    }
+    if (res.resultCode === 'NOT_IN_ORDER') {
+      playErrorSound();
+      setScanWarning({ type: 'not_in_order', barcode: res.barcode });
+      return;
+    }
+    const { kind, text } = describeScanResult(res);
+    if (kind === 'success') playSuccessSound(); else playErrorSound();
+    showBanner(kind, text);
+  }
+
   const handleScan = useCallback(async (barcode) => {
+    if (bulkArmed) {
+      setBulkArmed(false);
+      const resolved = resolveBarcodeLocally(barcode, mode, items);
+      if (resolved.status === 'OK') {
+        setBulkPending({ lineNo: resolved.item.line_no, barcode });
+        setBulkQtyInput(String(resolved.suggested));
+        showBanner('success', `🔢 ${resolved.item.item_name} — הזינו כמות בכרטיס למטה`);
+        return;
+      }
+      playErrorSound();
+      if (resolved.status === 'NOT_IN_ORDER') setScanWarning({ type: 'not_in_order', barcode });
+      else if (resolved.status === 'VERIFY_MISMATCH') setScanWarning({ type: 'mismatch', item: resolved.item });
+      else if (resolved.status === 'OVER_PICK') showBanner('error', `⚠️ ${resolved.item?.item_name || 'הפריט'} — כבר נלקט במלואו`);
+      else if (resolved.status === 'NOTHING_TO_VERIFY') showBanner('error', `⚠️ ${resolved.item?.item_name || 'הפריט'} סומן כחסר — אין מה לבדוק`);
+      return;
+    }
+
     const clientEventId = crypto.randomUUID();
     try {
       const res = await api.scanItem(order.order_key, { barcode, clientEventId, deviceId: getDeviceId() });
-      const { kind, text } = describeScanResult(res);
-      if (kind === 'success') playSuccessSound(); else playErrorSound();
-      showBanner(kind, text);
-      if (res.item) onItemUpdated(res.item);
+      processScanResult(res);
     } catch (e) {
       // כשל רשת אמיתי אחרי כל ניסיונות ה-retry הפנימיים (api.scanItem) — לא
       // מעמידים פנים שהסריקה נקלטה. חיווי קבוע עד שסריקה הבאה מצליחה, בדיוק
@@ -84,9 +153,35 @@ export default function PickChecklist({ mode, order, items, onItemUpdated, busy,
       playErrorSound();
       showBanner('error', 'אין חיבור — הסריקה האחרונה לא אושרה, בדקו את הכמות במסך לפני שממשיכים', true);
     }
-  }, [order.order_key, onItemUpdated]);
+  }, [order.order_key, onItemUpdated, bulkArmed, mode, items]);
 
-  useScannerCapture(handleScan, { enabled: true });
+  // הסריקה מושבתת לגמרי כשיש חלון חסימה פתוח (עד "הבנתי" מפורש) או בזמן
+  // שממתינים לאישור כמות (הקלט כבר ממוקד — סריקה נוספת רק תקליד ספרות
+  // לתוכו, עדיף שלא תיספר כסריקה נפרדת כלל).
+  useScannerCapture(handleScan, { enabled: !scanWarning && !bulkPending });
+
+  async function confirmBulkQty() {
+    if (!bulkPending) return;
+    const qty = Number(bulkQtyInput);
+    if (!(qty > 0)) return;
+    setBusy(true);
+    setError('');
+    try {
+      const clientEventId = crypto.randomUUID();
+      const res = await api.scanItem(order.order_key, { barcode: bulkPending.barcode, clientEventId, deviceId: getDeviceId(), quantity: qty });
+      processScanResult(res);
+    } catch (e) {
+      playErrorSound();
+      showBanner('error', 'אין חיבור — הכמות לא נשמרה, נסו שוב', true);
+    } finally {
+      setBusy(false);
+      setBulkPending(null);
+    }
+  }
+
+  function cancelBulkQty() {
+    setBulkPending(null);
+  }
 
   // תיקון (17.9.2026, בקשת דניאל): לחיצה על שורה בליקוט/בדיקה גרמה לרענון
   // מלא של כל ההזמנה (GET נוסף עם כל השורות/אירועים/משלוחים) על כל לחיצה,
@@ -172,13 +267,24 @@ export default function PickChecklist({ mode, order, items, onItemUpdated, busy,
 
   return (
     <div>
-      {scanBanner ? (
-        <div className={`scan-banner ${scanBanner.kind}`}>{scanBanner.text}</div>
-      ) : (
-        // אינדיקטור קבוע — כדי שיהיה ברור בלי לנחש שהסריקה פעילה במסך הזה
-        // (הלכידה תמיד פעילה כל עוד PickChecklist מורכב, אין "הפעלה" נפרדת).
-        <div className="scan-banner ready">📡 מוכן לסריקה</div>
-      )}
+      <div className="scan-status-row">
+        {scanBanner ? (
+          <div className={`scan-banner ${scanBanner.kind}`}>{scanBanner.text}</div>
+        ) : bulkArmed ? (
+          <div className="scan-banner armed">🔢 סרקו את הפריט להזנת כמות</div>
+        ) : (
+          // אינדיקטור קבוע — כדי שיהיה ברור בלי לנחש שהסריקה פעילה במסך הזה
+          // (הלכידה תמיד פעילה כל עוד PickChecklist מורכב, אין "הפעלה" נפרדת).
+          <div className="scan-banner ready">📡 מוכן לסריקה</div>
+        )}
+        <button
+          className={'action-btn small' + (bulkArmed ? '' : ' secondary')}
+          disabled={!!bulkPending}
+          onClick={() => setBulkArmed((v) => !v)}
+        >
+          🔢 {bulkArmed ? 'ביטול' : 'הזנת כמות'}
+        </button>
+      </div>
       {sorted.map((it) => {
         const isMissing = it.pick_status === 'missing';
         const isShortage = it.pick_status === 'missing' || it.pick_status === 'partial';
@@ -236,6 +342,21 @@ export default function PickChecklist({ mode, order, items, onItemUpdated, busy,
               <div className="pick-item-qty">&times;{it.quantity}</div>
             </div>
             <div className="pick-item-barcode">{it.item_code}{it.barcode ? ` · ${it.barcode}` : ''}</div>
+
+            {bulkPending && bulkPending.lineNo === it.line_no && (
+              <div className="pick-edit-row bulk-qty-row" onClick={(e) => e.stopPropagation()}>
+                <input
+                  type="number" min="1" autoFocus value={bulkQtyInput}
+                  onChange={(e) => setBulkQtyInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') confirmBulkQty(); }}
+                  placeholder="כמות"
+                />
+                <div className="btn-row">
+                  <button className="action-btn small" disabled={busy || !(Number(bulkQtyInput) > 0)} onClick={confirmBulkQty}>✓ אישור כמות</button>
+                  <button className="action-btn secondary small" onClick={cancelBulkQty}>ביטול</button>
+                </div>
+              </div>
+            )}
 
             <div className="pick-item-body">
             {mode === 'pick' && (
@@ -303,7 +424,12 @@ export default function PickChecklist({ mode, order, items, onItemUpdated, busy,
                 {isMissing ? (
                   <div className="meta pick-status-line missing">❌ לא נמצא בליקוט — אין מה לבדוק{it.pick_note ? ` · ${it.pick_note}` : ''}</div>
                 ) : (
-                  <div className="meta">נלקט: {it.qty_picked} מתוך {it.quantity}{it.pick_note ? ` · ${it.pick_note}` : ''}</div>
+                  <>
+                    <div className="meta">נלקט: {it.qty_picked} מתוך {it.quantity}{it.pick_note ? ` · ${it.pick_note}` : ''}</div>
+                    {/* מונה חי לפי סריקה — מתעדכן על כל סריקת בדיקה, כדי שרואים בבירור
+                        איזו שורה באמצע בדיקה ומה ההתקדמות שלה (בקשת דניאל 22.9.2026) */}
+                    <div className="meta verify-progress">בדיקה: {it.qty_verified || 0} מתוך {it.qty_picked}</div>
+                  </>
                 )}
                 {replaceBlock}
 
@@ -367,6 +493,35 @@ export default function PickChecklist({ mode, order, items, onItemUpdated, busy,
           </div>
         );
       })}
+
+      {/* חלון חסימה — סריקה לא ממשיכה לעבוד עד "הבנתי, המשך" מפורש (ר'
+          useScannerCapture למעלה, enabled: !scanWarning). בקשת דניאל 22.9.2026. */}
+      {scanWarning && (
+        <div className="modal-backdrop" onClick={() => setScanWarning(null)}>
+          <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+            {scanWarning.type === 'not_in_order' ? (
+              <>
+                <h3>🚫 פריט לא שייך להזמנה</h3>
+                <div className="meta" style={{ marginBottom: 8 }}>
+                  הברקוד שנסרק{scanWarning.barcode ? ` (${scanWarning.barcode})` : ''} לא שייך להזמנה הזו.
+                  <br /><br />
+                  יש להוציא את הפריט מהשולחן — הוא לא אמור להיות כאן.
+                </div>
+              </>
+            ) : (
+              <>
+                <h3>⚠️ יותר מדי במלאי</h3>
+                <div className="meta" style={{ marginBottom: 8 }}>
+                  נסרק על {scanWarning.item?.item_name || 'הפריט'} יותר ממה שדווח כנלקט ({scanWarning.item?.qty_picked ?? '?'} יח&#39;).
+                  <br /><br />
+                  אם באמת יש יותר יחידות בפועל — יש לתקן את הכמות דרך כפתור "תיקון" על השורה.
+                </div>
+              </>
+            )}
+            <button className="action-btn warn" onClick={() => setScanWarning(null)}>הבנתי, המשך</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -251,10 +251,12 @@ function buildScanResponse({ resultCode, stage, item, lineCompleted, orderProgre
   return out;
 }
 
-// סריקה בזמן ליקוט: כל סריקה = +1 ל-qty_picked (יש ברקוד אחד בלבד לפריט,
-// ר' BARCODE_SCANNING_SPEC.md סעיף 2 — אין UnitsPerScan). UPDATE אטומי מוגן
-// ב-WHERE מונע חריגה מהכמות שהוזמנה גם בתחרות בין שתי סריקות מקבילות.
-function scanForPicking(orderKey, barcode, clientEventId, userId, deviceId) {
+// סריקה בזמן ליקוט: כל סריקה = +1 ל-qty_picked כברירת מחדל, או +qty אם
+// המלקט יזם "הזנת כמות" (כפתור ייעודי בפרונט לפריטים בכמות גדולה — סריקה
+// אחת לזיהוי הפריט, ואז כמות מוקלדת, כדי לא לדרוש 1000 סריקות בפועל).
+// UPDATE אטומי מוגן ב-WHERE מונע חריגה מהכמות שהוזמנה גם בתחרות בין שתי
+// סריקות מקבילות, ועובד זהה לדלתא של 1 או של כל כמות אחרת.
+function scanForPicking(orderKey, barcode, clientEventId, userId, deviceId, qty = 1) {
   const candidates = sortByLocationThenLine(
     db.prepare('SELECT * FROM order_items_cache WHERE order_key = ? AND barcode = ?').all(orderKey, barcode)
   );
@@ -278,14 +280,15 @@ function scanForPicking(orderKey, barcode, clientEventId, userId, deviceId) {
     const previousQty = target.qty_picked || 0;
     const upd = db.prepare(`
       UPDATE order_items_cache
-      SET qty_picked = COALESCE(qty_picked,0) + 1,
-          pick_status = CASE WHEN COALESCE(qty_picked,0) + 1 >= quantity THEN 'picked' ELSE 'partial' END,
+      SET qty_picked = COALESCE(qty_picked,0) + @qty,
+          pick_status = CASE WHEN COALESCE(qty_picked,0) + @qty >= quantity THEN 'picked' ELSE 'partial' END,
           pick_marked_at = datetime('now'), auto_missing = 0
-      WHERE order_key = ? AND line_no = ? AND COALESCE(qty_picked,0) + 1 <= quantity
-    `).run(orderKey, target.line_no);
+      WHERE order_key = @order_key AND line_no = @line_no AND COALESCE(qty_picked,0) + @qty <= quantity
+    `).run({ qty, order_key: orderKey, line_no: target.line_no });
 
     if (upd.changes === 0) {
-      // race נדיר: סריקה אחרת "תפסה" את היחידה האחרונה בין הבדיקה לעדכון
+      // race נדיר (סריקה אחרת "תפסה" יחידות בין הבדיקה לעדכון), או כמות
+      // מוקלדת שחורגת מהנותר בפועל
       recordScanEvent({
         client_event_id: clientEventId, order_key: orderKey, line_no: target.line_no, barcode,
         stage: 'picking', delta_qty: 0, previous_qty: previousQty, new_qty: previousQty,
@@ -300,7 +303,7 @@ function scanForPicking(orderKey, barcode, clientEventId, userId, deviceId) {
     const resultCode = progress.done === progress.total ? 'ORDER_COMPLETED' : (lineCompleted ? 'ITEM_COMPLETED' : 'ACCEPTED');
     recordScanEvent({
       client_event_id: clientEventId, order_key: orderKey, line_no: target.line_no, barcode,
-      stage: 'picking', delta_qty: 1, previous_qty: previousQty, new_qty: updatedItem.qty_picked,
+      stage: 'picking', delta_qty: qty, previous_qty: previousQty, new_qty: updatedItem.qty_picked,
       result_code: resultCode, user_id: userId, device_id: deviceId,
     });
     return { resultCode, item: updatedItem, lineCompleted, orderProgress: progress };
@@ -315,7 +318,7 @@ function scanForPicking(orderKey, barcode, clientEventId, userId, deviceId) {
 // המקורית — שורה חלקית (4 מתוך 6) לא ניתנת לאימות מעבר ל-4 יחידות שבאמת
 // יש. שורה 'missing' לא ניתנת לסריקת בדיקה בכלל (אותו כלל כמו אישור ידני
 // ב-updateItemCheck). ר' BARCODE_SCANNING_SPEC.md סעיף 1.2.
-function scanForVerification(orderKey, barcode, clientEventId, userId, deviceId) {
+function scanForVerification(orderKey, barcode, clientEventId, userId, deviceId, qty = 1) {
   const candidates = sortByLocationThenLine(
     db.prepare('SELECT * FROM order_items_cache WHERE order_key = ? AND barcode = ?').all(orderKey, barcode)
   );
@@ -344,10 +347,10 @@ function scanForVerification(orderKey, barcode, clientEventId, userId, deviceId)
     const previousQty = target.qty_verified || 0;
     const upd = db.prepare(`
       UPDATE order_items_cache
-      SET qty_verified = COALESCE(qty_verified,0) + 1,
-          checked = CASE WHEN COALESCE(qty_verified,0) + 1 >= qty_picked THEN 1 ELSE checked END
-      WHERE order_key = ? AND line_no = ? AND COALESCE(qty_verified,0) + 1 <= qty_picked
-    `).run(orderKey, target.line_no);
+      SET qty_verified = COALESCE(qty_verified,0) + @qty,
+          checked = CASE WHEN COALESCE(qty_verified,0) + @qty >= qty_picked THEN 1 ELSE checked END
+      WHERE order_key = @order_key AND line_no = @line_no AND COALESCE(qty_verified,0) + @qty <= qty_picked
+    `).run({ qty, order_key: orderKey, line_no: target.line_no });
 
     if (upd.changes === 0) {
       recordScanEvent({
@@ -364,7 +367,7 @@ function scanForVerification(orderKey, barcode, clientEventId, userId, deviceId)
     const resultCode = progress.done === progress.total ? 'ORDER_COMPLETED' : (lineCompleted ? 'ITEM_COMPLETED' : 'ACCEPTED');
     recordScanEvent({
       client_event_id: clientEventId, order_key: orderKey, line_no: target.line_no, barcode,
-      stage: 'verification', delta_qty: 1, previous_qty: previousQty, new_qty: updatedItem.qty_verified,
+      stage: 'verification', delta_qty: qty, previous_qty: previousQty, new_qty: updatedItem.qty_verified,
       result_code: resultCode, user_id: userId, device_id: deviceId,
     });
     return { resultCode, item: updatedItem, lineCompleted, orderProgress: progress };
@@ -386,10 +389,15 @@ function buildReplayResponse(orderKey, eventRow) {
 // נקודת הכניסה היחידה לסריקה — ההקשר (סטטוס ההזמנה) קובע את הפעולה, לא סוג
 // הקלט. דה-דופליקציה קודם לכל דבר אחר: אם client_event_id הזה כבר טופל
 // (retry רשת על אותה סריקה פיזית), מחזירים את מה שנשמר בזמנו בלי לגעת בכמות שוב.
-function scanItem(orderKey, { barcode, clientEventId, userId, deviceId }) {
+// quantity: אופציונלי, ברירת מחדל 1 (סריקה רגילה). מאפשר לפרונט לשלוח כמות
+// גדולה יותר במקרה של "הזנת כמות" (פריט בכמות גדולה — סריקה אחת לזיהוי,
+// כמות מוקלדת, במקום לדרוש סריקה בודדת לכל יחידה).
+function scanItem(orderKey, { barcode, clientEventId, userId, deviceId, quantity }) {
   const norm = typeof barcode === 'string' ? barcode.trim() : '';
   if (!norm) throw new RuleError('ברקוד חסר');
   if (!clientEventId) throw new RuleError('חסר מזהה אירוע (clientEventId)');
+  const qty = quantity == null ? 1 : Number(quantity);
+  if (!Number.isFinite(qty) || qty <= 0) throw new RuleError('כמות לא תקינה');
 
   const existing = db.prepare('SELECT * FROM scan_events WHERE order_key = ? AND client_event_id = ?').get(orderKey, clientEventId);
   if (existing) return buildReplayResponse(orderKey, existing);
@@ -397,8 +405,8 @@ function scanItem(orderKey, { barcode, clientEventId, userId, deviceId }) {
   const state = getState(orderKey);
   if (!state) throw new RuleError('הזמנה לא נמצאה');
 
-  if (state.status === 'picking') return scanForPicking(orderKey, norm, clientEventId, userId, deviceId);
-  if (state.status === 'ready_for_check') return scanForVerification(orderKey, norm, clientEventId, userId, deviceId);
+  if (state.status === 'picking') return scanForPicking(orderKey, norm, clientEventId, userId, deviceId, qty);
+  if (state.status === 'ready_for_check') return scanForVerification(orderKey, norm, clientEventId, userId, deviceId, qty);
 
   return buildScanResponse({ resultCode: 'ORDER_NOT_SCANNABLE', currentStatus: state.status });
 }

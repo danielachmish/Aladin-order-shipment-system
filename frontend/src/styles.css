@@ -235,13 +235,20 @@ button { font-family: inherit; }
 
 /* פס חיווי סריקה — ר' BARCODE_SCANNING_SPEC.md. לא popup, נעלם לבד (חוץ
    מכשל חיבור, שנשאר עד סריקה מוצלחת הבאה). */
-.scan-banner {
+.scan-status-row {
   position: sticky;
   top: 0;
   z-index: 5;
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.scan-status-row .scan-banner { flex: 1; margin-bottom: 0; }
+.scan-status-row .action-btn.small { width: auto; flex: 0 0 auto; margin-top: 0; }
+.scan-banner {
   padding: 10px 14px;
   border-radius: 10px;
-  margin-bottom: 10px;
   font-weight: 600;
   font-size: 15px;
   text-align: center;
@@ -249,6 +256,12 @@ button { font-family: inherit; }
 .scan-banner.success { background: #e6f4ea; color: var(--green); }
 .scan-banner.error { background: #fdecea; color: var(--red); }
 .scan-banner.ready { background: var(--teal-light); color: var(--teal-dark); font-weight: 500; font-size: 13px; }
+.scan-banner.armed { background: #ffe9d6; color: var(--orange); }
+
+/* "הזנת כמות" — סריקה אחת + כמות מוקלדת לפריטים בכמות גדולה (בקשת דניאל
+   22.9.2026). בולט יותר משאר שורות העריכה כדי שיהיה קל למצוא ברשימה ארוכה. */
+.bulk-qty-row { border: 2px solid var(--orange); }
+.verify-progress { font-weight: 600; }
 
 /* כרטיס פריט בליקוט/בדיקה — עוצב מחדש לפי בקשת דניאל 17.9.2026 ("לא ברור
    בכלל, אני צריך בולט: מיקום פריט, שם פריט, כמות שהוזמנה"): מיקום כשורה

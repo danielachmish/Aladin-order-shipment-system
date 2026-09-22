@@ -25,11 +25,11 @@ describe('POST /orders/:key/items/scan', () => {
     `).run(orderKey, lineNo, itemCode, quantity, location, barcode, pickStatus, qtyPicked, checked, qtyVerified);
   }
 
-  function scan(orderKey, barcode, clientEventId, deviceId) {
+  function scan(orderKey, barcode, clientEventId, deviceId, quantity) {
     return request(app)
       .post(`/api/orders/${encodeURIComponent(orderKey)}/items/scan`)
       .set('Authorization', `Bearer ${warehouseToken}`)
-      .send({ barcode, clientEventId, deviceId });
+      .send({ barcode, clientEventId, deviceId, quantity });
   }
 
   describe('picking stage', () => {
@@ -157,6 +157,62 @@ describe('POST /orders/:key/items/scan', () => {
         .set('Authorization', `Bearer ${warehouseToken}`)
         .send({ checked: true });
       expect(res.body.item.qty_verified).toBe(4);
+    });
+  });
+
+  // "הזנת כמות" (בקשת דניאל 22.9.2026): סריקה אחת + כמות מוקלדת, לפריטים
+  // בכמות גדולה — כדי לא לדרוש סריקה נפרדת לכל יחידה מתוך 1000.
+  describe('bulk quantity (one scan + typed quantity)', () => {
+    it('applies the full quantity in a single scan during picking', async () => {
+      seedOrder(db, { orderKey: '3|0|20', orderNum: 20, status: 'picking' });
+      insertItem('3|0|20', { quantity: 1000 });
+
+      const res = await scan('3|0|20', '1111111111111', 'evt-1', null, 1000);
+      expect(res.body.resultCode).toBe('ORDER_COMPLETED');
+      expect(res.body.item.qty_picked).toBe(1000);
+      expect(res.body.item.pick_status).toBe('picked');
+
+      const events = db.prepare('SELECT delta_qty FROM scan_events WHERE order_key = ?').all('3|0|20');
+      expect(events).toEqual([{ delta_qty: 1000 }]); // אירוע אחד, לא 1000
+    });
+
+    it('rejects a bulk quantity that exceeds the remaining amount with OVER_PICK', async () => {
+      seedOrder(db, { orderKey: '3|0|21', orderNum: 21, status: 'picking' });
+      insertItem('3|0|21', { quantity: 10 });
+
+      const res = await scan('3|0|21', '1111111111111', 'evt-1', null, 11);
+      expect(res.body.resultCode).toBe('OVER_PICK');
+      const item = db.prepare('SELECT qty_picked FROM order_items_cache WHERE order_key = ?').get('3|0|21');
+      expect(item.qty_picked).toBeNull(); // לא השתנה
+    });
+
+    it('applies a bulk quantity during verification, toward qty_picked', async () => {
+      seedOrder(db, { orderKey: '3|0|22', orderNum: 22, status: 'ready_for_check' });
+      insertItem('3|0|22', { quantity: 500, pickStatus: 'picked', qtyPicked: 500 });
+
+      const res = await scan('3|0|22', '1111111111111', 'evt-1', null, 500);
+      expect(res.body.resultCode).toBe('ORDER_COMPLETED');
+      expect(res.body.item.qty_verified).toBe(500);
+      expect(res.body.item.checked).toBe(1);
+    });
+
+    it('rejects a non-positive quantity', async () => {
+      seedOrder(db, { orderKey: '3|0|23', orderNum: 23, status: 'picking' });
+      insertItem('3|0|23', { quantity: 10 });
+
+      const res = await scan('3|0|23', '1111111111111', 'evt-1', null, 0);
+      expect(res.status).toBe(400);
+    });
+
+    it('is idempotent for bulk quantities too (replay does not double-apply)', async () => {
+      seedOrder(db, { orderKey: '3|0|24', orderNum: 24, status: 'picking' });
+      insertItem('3|0|24', { lineNo: 1, quantity: 50 });
+      insertItem('3|0|24', { lineNo: 2, barcode: '2222222222222', quantity: 1 });
+
+      const first = await scan('3|0|24', '1111111111111', 'evt-dup', null, 50);
+      const second = await scan('3|0|24', '1111111111111', 'evt-dup', null, 50);
+      expect(first.body.item.qty_picked).toBe(50);
+      expect(second.body.item.qty_picked).toBe(50); // לא 100
     });
   });
 });

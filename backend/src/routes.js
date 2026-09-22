@@ -452,10 +452,10 @@ router.post('/orders/:key/items/:lineNo/correct-pick', requireRole('warehouse', 
 router.post('/orders/:key/items/scan', requireRole('warehouse', 'warehouse_manager'), (req, res) => {
   try {
     const key = decodeURIComponent(req.params.key);
-    const { barcode, clientEventId, deviceId } = req.body || {};
+    const { barcode, clientEventId, deviceId, quantity } = req.body || {};
     if (!barcode || typeof barcode !== 'string') return res.status(400).json({ error: 'ברקוד חסר' });
     if (!clientEventId || typeof clientEventId !== 'string') return res.status(400).json({ error: 'clientEventId חסר' });
-    const result = wf.scanItem(key, { barcode, clientEventId, userId: req.user.id, deviceId: deviceId || null });
+    const result = wf.scanItem(key, { barcode, clientEventId, userId: req.user.id, deviceId: deviceId || null, quantity });
     res.json({ ok: true, ...result });
   } catch (e) {
     res.status(e.status || 500).json({ error: e.message });
