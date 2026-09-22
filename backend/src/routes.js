@@ -72,23 +72,48 @@ router.get('/health', (req, res) => {
 // של הזמנות אמיתיות (ship_delivered -> closeOrder). עכשיו: אם הסוד לא מוגדר,
 // הנתיב נדחה כברירת מחדל. לבדיקה מקומית בלי סוד: הגדירו
 // ALLOW_UNAUTHENTICATED_UPS_WEBHOOK=true במפורש בסביבת הפיתוח שלכם בלבד.
+//
+// פורמט התשובה (כל התשובות, הצלחה וכישלון כאחד) נקבע ע"י UPS (ירדן, 22.9.2026):
+// { trackNo, returnCode: 1 אם התקבל/0 אם לא, errorCode: 0 אם תקין, errorMessage }.
+function webhookReply(res, status, { trackNo, ok, errorCode, errorMessage }) {
+  res.status(status).json({
+    trackNo: trackNo || '',
+    returnCode: ok ? 1 : 0,
+    errorCode: ok ? 0 : (errorCode || status),
+    errorMessage: ok ? '' : (errorMessage || ''),
+  });
+}
+
 router.post('/webhooks/ups', express.json(), (req, res) => {
   const devBypass = !upsCfg.webhookBearerSecret && process.env.ALLOW_UNAUTHENTICATED_UPS_WEBHOOK === 'true';
   if (!devBypass) {
     if (!upsCfg.webhookBearerSecret) {
-      return res.status(503).json({ error: 'UPS_WEBHOOK_BEARER_SECRET לא מוגדר בשרת — Webhook חסום' });
+      return webhookReply(res, 503, {
+        trackNo: req.body && req.body.trackNo,
+        ok: false,
+        errorMessage: 'UPS_WEBHOOK_BEARER_SECRET לא מוגדר בשרת — Webhook חסום',
+      });
     }
     const header = req.headers.authorization || '';
     const token = header.startsWith('Bearer ') ? header.slice(7) : null;
     if (token !== upsCfg.webhookBearerSecret) {
-      return res.status(401).json({ error: 'אימות Webhook נכשל' });
+      return webhookReply(res, 401, {
+        trackNo: req.body && req.body.trackNo,
+        ok: false,
+        errorMessage: 'אימות Webhook נכשל',
+      });
     }
   }
   try {
     const result = ups.handleWebhook(req.body);
-    res.json(result);
+    webhookReply(res, 200, { trackNo: result.trackNo, ok: true });
   } catch (e) {
-    res.status(e.status || 500).json({ error: e.message });
+    webhookReply(res, e.status || 500, {
+      trackNo: req.body && req.body.trackNo,
+      ok: false,
+      errorCode: e.status || 500,
+      errorMessage: e.message,
+    });
   }
 });
 
