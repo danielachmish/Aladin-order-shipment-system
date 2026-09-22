@@ -122,7 +122,9 @@ function updateItemPick(orderKey, lineNo, userId, { qtyPicked, pickStatus, pickN
   if (!item) throw new RuleError('שורת פריט לא נמצאה');
 
   db.prepare(`
-    UPDATE order_items_cache SET qty_picked = ?, pick_status = ?, pick_note = ?, pick_marked_at = datetime('now'), auto_missing = 0
+    UPDATE order_items_cache
+    SET qty_picked = ?, pick_status = ?, pick_note = ?, pick_marked_at = datetime('now'), auto_missing = 0,
+        picked_via = 'manual', manual_pick_approved_by = NULL, manual_pick_approved_at = NULL
     WHERE order_key = ? AND line_no = ?
   `).run(pickStatus === 'missing' ? 0 : qtyPicked, pickStatus, pickNote || null, orderKey, lineNo);
 
@@ -188,7 +190,7 @@ function correctPickedItem(orderKey, lineNo, userId, { qtyPicked, pickStatus, ch
   db.prepare(`
     UPDATE order_items_cache
     SET qty_picked = ?, pick_status = ?, checked = 1, check_note = ?, pick_marked_at = datetime('now'),
-        auto_missing = 0, qty_verified = ?
+        auto_missing = 0, qty_verified = ?, picked_via = 'manual', manual_pick_approved_by = NULL, manual_pick_approved_at = NULL
     WHERE order_key = ? AND line_no = ?
   `).run(
     pickStatus === 'missing' ? 0 : qtyPicked, pickStatus, checkNote || null,
@@ -282,7 +284,7 @@ function scanForPicking(orderKey, barcode, clientEventId, userId, deviceId, qty 
       UPDATE order_items_cache
       SET qty_picked = COALESCE(qty_picked,0) + @qty,
           pick_status = CASE WHEN COALESCE(qty_picked,0) + @qty >= quantity THEN 'picked' ELSE 'partial' END,
-          pick_marked_at = datetime('now'), auto_missing = 0
+          pick_marked_at = datetime('now'), auto_missing = 0, picked_via = 'scan'
       WHERE order_key = @order_key AND line_no = @line_no AND COALESCE(qty_picked,0) + @qty <= quantity
     `).run({ qty, order_key: orderKey, line_no: target.line_no });
 
@@ -462,6 +464,19 @@ function propagateConfirmedShortages(orderKey, userId) {
   }
 }
 
+// חוסם מעבר לאריזה כשיש שורה שנלקטה ידנית (בלי סריקת ברקוד) שעוד לא אושרה
+// ע"י מנהל מחסן/מנהל מערכת — משותף בין "אישרתי בדיקה" הרגיל ו"דלג על שלב
+// הבדיקה" כאחד, כי החסימה הזו לא תלויה באיזה מסלול ניסו. ר' בקשת דניאל 22.9.2026.
+function assertManualPicksApproved(orderKey) {
+  const pending = db.prepare(`
+    SELECT COUNT(*) c FROM order_items_cache
+    WHERE order_key = ? AND picked_via = 'manual' AND pick_status != 'missing' AND manual_pick_approved_at IS NULL
+  `).get(orderKey).c;
+  if (pending > 0) {
+    throw new RuleError(`יש ${pending} פריטים שנלקטו ידנית וממתינים לאישור מנהל`, 'manual_pick_pending');
+  }
+}
+
 function finishCheck(orderKey, userId, expectedVersion) {
   const state = getState(orderKey);
   if (!state) throw new RuleError('הזמנה לא נמצאה');
@@ -473,6 +488,8 @@ function finishCheck(orderKey, userId, expectedVersion) {
   ).get(orderKey).c;
   if (unchecked > 0) throw new RuleError(`יש ${unchecked} שורות שעדיין לא אושרו בבדיקה`);
 
+  assertManualPicksApproved(orderKey);
+
   // לא לתת להזמנה עם תוספת ממתינה לעבור לאריזה — מישהו עלול לארוז ולשלוח
   // בלי הפריט שעוד בדרך. חוסמים כאן (לא רק בסגירה כמו קודם), עם קוד ייעודי
   // כדי שהפרונט יציג חלון מודגש במקום שגיאה רגילה. ר' בקשת דניאל 17.9.2026.
@@ -481,6 +498,23 @@ function finishCheck(orderKey, userId, expectedVersion) {
   }
 
   const updated = writeTransition(orderKey, userId, 'ready_to_pack', {}, 'אישור בדיקה — מוכן לאריזה');
+  propagateConfirmedShortages(orderKey, userId);
+  return updated;
+}
+
+// "דלג על שלב הבדיקה" — זמין תמיד ב-ready_for_check, לא דורש checked=1 על
+// כל השורות (זה כל העניין — QC רגיל נשאר אופציונלי, לא חובה). אותה חסימת
+// אישור-מנהל בדיוק כמו finishCheck, כדי שאי אפשר יהיה לעקוף אותה דרך כאן.
+// ר' בקשת דניאל 22.9.2026.
+function skipCheck(orderKey, userId, expectedVersion) {
+  const state = getState(orderKey);
+  if (!state) throw new RuleError('הזמנה לא נמצאה');
+  if (state.status !== 'ready_for_check') throw new RuleError('ההזמנה אינה בשלב בדיקה');
+  assertVersion(state, expectedVersion);
+
+  assertManualPicksApproved(orderKey);
+
+  const updated = writeTransition(orderKey, userId, 'ready_to_pack', {}, 'דילוג על שלב הבדיקה — הכל נסרק/אושר');
   propagateConfirmedShortages(orderKey, userId);
   return updated;
 }
@@ -513,7 +547,8 @@ function clearShortedItem(itemCode) {
     for (const row of rows) {
       db.prepare(`
         UPDATE order_items_cache
-        SET pick_status = NULL, qty_picked = NULL, auto_missing = 0, pick_marked_at = NULL
+        SET pick_status = NULL, qty_picked = NULL, auto_missing = 0, pick_marked_at = NULL,
+            picked_via = NULL, manual_pick_approved_by = NULL, manual_pick_approved_at = NULL
         WHERE order_key = ? AND line_no = ?
       `).run(row.order_key, row.line_no);
       emitChange('order', { order_key: row.order_key });
@@ -868,6 +903,51 @@ function confirmItemReplacement(orderKey, lineNo, userId) {
   return db.prepare('SELECT * FROM order_items_cache WHERE order_key = ? AND line_no = ?').get(orderKey, lineNo);
 }
 
+// מנהל מחסן/מנהל מערכת מאשר שורה שנלקטה ידנית (בלי סריקת ברקוד) — שער חובה
+// לפני ready_to_pack כשיש ולו שורה כזו (ר' finishCheck/skipCheck). בכוונה
+// לא זמין לבודק/מלקט רגיל — בקרה נפרדת ומחמירה יותר. ר' בקשת דניאל 22.9.2026.
+function approveManualPick(orderKey, lineNo, managerId) {
+  const state = getState(orderKey);
+  if (!state) throw new RuleError('הזמנה לא נמצאה');
+  const item = db.prepare('SELECT * FROM order_items_cache WHERE order_key = ? AND line_no = ?').get(orderKey, lineNo);
+  if (!item) throw new RuleError('שורת פריט לא נמצאה');
+  if (item.picked_via !== 'manual' || item.pick_status === 'missing') {
+    throw new RuleError('אין צורך באישור מנהל לשורה זו');
+  }
+  const tx = db.transaction(() => {
+    db.prepare(`
+      UPDATE order_items_cache SET manual_pick_approved_by = ?, manual_pick_approved_at = datetime('now')
+      WHERE order_key = ? AND line_no = ?
+    `).run(managerId, orderKey, lineNo);
+    db.prepare(`UPDATE workflow_state SET version = version + 1, updated_at = datetime('now') WHERE order_key = ?`).run(orderKey);
+    db.prepare(`
+      INSERT INTO workflow_events (event_id, order_key, user_id, from_status, to_status, note)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(uid('evt'), orderKey, managerId, state.status, state.status,
+      `מנהל אישר ליקוט ידני: ${item.item_code} (שורה ${lineNo})`);
+  });
+  tx();
+  emitChange('order', { order_key: orderKey, status: state.status, version: state.version });
+  emitChange('manual_pick_approval', { order_key: orderKey, line_no: lineNo });
+  return db.prepare('SELECT * FROM order_items_cache WHERE order_key = ? AND line_no = ?').get(orderKey, lineNo);
+}
+
+// פאנל "אישורי בדיקות" (מנהל) — כל השורות שנלקטו ידנית וממתינות לאישור,
+// בכל ההזמנות הפעילות (לא סגורות/מבוטלות — לא רלוונטי שם יותר).
+function listPendingManualPickApprovals() {
+  return db.prepare(`
+    SELECT oic.order_key, oic.line_no, oic.item_code, oic.item_name, oic.quantity, oic.qty_picked,
+           oic.pick_status, oic.location, oic.pick_note, oic.pick_marked_at,
+           oc.order_num, oc.customer_name, ws.status AS order_status
+    FROM order_items_cache oic
+    JOIN workflow_state ws ON ws.order_key = oic.order_key
+    JOIN orders_cache oc ON oc.order_key = oic.order_key
+    WHERE oic.picked_via = 'manual' AND oic.pick_status != 'missing' AND oic.manual_pick_approved_at IS NULL
+      AND ws.status NOT IN ('closed', 'cancelled')
+    ORDER BY oic.pick_marked_at ASC
+  `).all();
+}
+
 // דוח חוסרים למזכירה (בקשת דניאל 14.9.2026): מזכירה (יוזר warehouse_manager)
 // מסמנת ברמת ההזמנה כולה שהוציאה חשבונית מתוקנת על כל החוסרים בה. עצמאי
 // לגמרי מסטטוס העבודה של ההזמנה (אפשר לסמן גם על הזמנה סגורה).
@@ -985,10 +1065,11 @@ module.exports = {
   getState, claimOrder, finishPicking, packDone, deliverToUps, selfPickup, closeOrder,
   reportIssue, releaseHold, cancelOrder, requestWait, receivedAnswer, setPriority,
   requestAddition, additionReceived,
-  updateItemPick, updateItemCheck, finishCheck, correctPickedItem, scanItem,
+  updateItemPick, updateItemCheck, finishCheck, skipCheck, correctPickedItem, scanItem,
   markShortageInvoiced, unmarkShortageInvoiced,
   linkOrders, unlinkOrder,
   updateOrderSettings, computeCodDisplay,
   listShortedItems, clearShortedItem,
   markItemReplaced, confirmItemReplacement,
+  approveManualPick, listPendingManualPickApprovals,
 };

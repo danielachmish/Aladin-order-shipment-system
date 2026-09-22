@@ -472,6 +472,19 @@ router.post('/orders/:key/items/:lineNo/correct-pick', requireRole('warehouse', 
   }
 });
 
+// אישור מנהל לשורה שנלקטה ידנית (בלי סריקה) — מנהל מחסן/מנהל מערכת בלבד,
+// בכוונה לא כל צוות המחסן. ר' בקשת דניאל 22.9.2026.
+router.post('/orders/:key/items/:lineNo/approve-manual-pick', requireRole('warehouse_manager', 'system_admin'), (req, res) => {
+  try {
+    const key = decodeURIComponent(req.params.key);
+    const lineNo = Number(req.params.lineNo);
+    const item = wf.approveManualPick(key, lineNo, req.user.id);
+    res.json({ ok: true, item });
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message });
+  }
+});
+
 // סריקת ברקוד — ליקוט ובדיקה כאחד, ההקשר (סטטוס ההזמנה) קובע את הפעולה
 // בצד השרת. ר' BARCODE_SCANNING_SPEC.md.
 router.post('/orders/:key/items/scan', requireRole('warehouse', 'warehouse_manager'), (req, res) => {
@@ -489,6 +502,11 @@ router.post('/orders/:key/items/scan', requireRole('warehouse', 'warehouse_manag
 
 router.post('/orders/:key/finish-check', requireRole('warehouse', 'warehouse_manager'),
   handleWorkflowAction((key, req) => wf.finishCheck(key, req.user.id, req.body?.expectedVersion)));
+
+// "דלג על שלב הבדיקה" — זמין תמיד ב-ready_for_check (לא רק כשהכל נסרק),
+// חסום באותה חסימת אישור-מנהל כמו finish-check. ר' בקשת דניאל 22.9.2026.
+router.post('/orders/:key/skip-check', requireRole('warehouse', 'warehouse_manager'),
+  handleWorkflowAction((key, req) => wf.skipCheck(key, req.user.id, req.body?.expectedVersion)));
 
 router.post('/orders/:key/pack-done', requireRole('warehouse', 'warehouse_manager'),
   handleWorkflowAction((key, req) => wf.packDone(key, req.user.id, req.body?.expectedVersion, req.body?.packageCount, req.body?.palletCount)));
@@ -574,6 +592,11 @@ router.post('/orders/:key/urgent-request', requireRole('agent'), (req, res) => {
 
 router.get('/urgent-requests/pending', requireRole('warehouse_manager', 'system_admin'), (req, res) => {
   res.json({ requests: urgent.listPending() });
+});
+
+// פאנל "אישורי בדיקות" (מנהל) — שורות שנלקטו ידנית וממתינות לאישור. ר' בקשת דניאל 22.9.2026.
+router.get('/manual-pick-approvals/pending', requireRole('warehouse_manager', 'system_admin'), (req, res) => {
+  res.json({ approvals: wf.listPendingManualPickApprovals() });
 });
 
 router.post('/urgent-requests/:id/decide', requireRole('warehouse_manager', 'system_admin'), (req, res) => {
