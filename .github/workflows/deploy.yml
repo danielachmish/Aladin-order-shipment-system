@@ -1,0 +1,36 @@
+name: Deploy to Cloudways
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.CLOUDWAYS_HOST }}
+          username: ${{ secrets.CLOUDWAYS_USER }}
+          password: ${{ secrets.CLOUDWAYS_PASSWORD }}
+          script: |
+            set -e
+            export PM2_HOME=~/private_html/.pm2
+            export PATH=~/private_html/tools/node_modules/.bin:$PATH
+
+            cd ~/private_html/repo
+            git fetch origin main
+            git reset --hard origin/main
+
+            cd backend
+            npm install --cache ~/private_html/.npm-cache
+            pm2 restart aladin-backend --update-env || pm2 start ecosystem.config.js
+            pm2 save
+
+            cd ../frontend
+            npm install --cache ~/private_html/.npm-cache
+            VITE_API_BASE=https://orders.aladincorp.com npm run build
+            cp -r dist/. ~/public_html/
+
+            echo "Deploy done: $(date)"
