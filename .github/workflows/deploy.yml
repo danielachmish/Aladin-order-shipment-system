@@ -18,18 +18,22 @@ jobs:
             set -e
             export PM2_HOME=~/private_html/.pm2
             export PATH=~/private_html/tools/node_modules/.bin:$PATH
+            # ~/.npm (ברירת המחדל) לא בר-כתיבה למשתמש הזה (ר' DEPLOY.md) —
+            # משתנה סביבה גלובלי מכסה גם npm install וגם npm run build,
+            # בניגוד ל---cache שצריך להעביר בנפרד לכל פקודה.
+            export npm_config_cache=~/private_html/.npm-cache
 
             cd ~/private_html/repo
             git fetch origin main
             git reset --hard origin/main
 
             cd backend
-            npm install --cache ~/private_html/.npm-cache
+            npm install
             pm2 restart aladin-backend --update-env || pm2 start ecosystem.config.js
             pm2 save
 
             cd ../frontend
-            npm install --cache ~/private_html/.npm-cache
+            npm install
             VITE_API_BASE=https://orders.aladincorp.com npm run build
             cp -r dist/. ~/public_html/
 
