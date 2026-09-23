@@ -12,8 +12,7 @@ if (isNew) {
 }
 
 const app = express();
-// נדרש כדי ש-req.ip יזהה נכון את כתובת הלקוח האמיתית (לא את ה-proxy הפנימי של
-// Render) — קריטי להגבלת הקצב על /auth/login (ר' routes.js loginRateLimit).
+// נדרש כדי ש-req.ip יזהה נכון את כתובת הלקוח האמיתית (לא את ה-proxy שלפני השרת) — קריטי להגבלת הקצב על /auth/login (ר' routes.js loginRateLimit).
 app.set('trust proxy', 1);
 // תיקון אבטחה (סקירה 14.9.2026): הוגבל למקורות ידועים (ר' config.js corsOrigins)
 // במקום cors() פתוח שקיבל בקשות מכל אתר באינטרנט.
@@ -26,8 +25,8 @@ app.use(express.json({ limit: '25mb' }));
 
 // PHP-proxy shim לפריסת Cloudways: ה-nginx שם מעביר ל-Apache רק בקשות
 // שמסתיימות ב-.php (ר' frontend/public/.htaccess), אז הבקשות מגיעות כ-
-// /api.php?_p=<הנתיב האמיתי>. שאר הפריסות (Render וכו') לא עוברות כאן כי
-// ה-frontend שלהן בונה כתובות /api רגילות (ר' frontend/src/api.js).
+// /api.php?_p=<הנתיב האמיתי>. פיתוח מקומי לא עובר כאן כי
+// ה-frontend בונה שם כתובות /api רגילות (ר' frontend/src/api.js).
 app.use('/api.php', (req, res, next) => {
   const target = req.query._p;
   if (typeof target !== 'string' || !target.startsWith('/')) {

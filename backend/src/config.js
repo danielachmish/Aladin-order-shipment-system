@@ -5,9 +5,8 @@ require('dotenv').config();
 
 // תיקון אבטחה (סקירה 14.9.2026): cors() ללא הגבלה קיבל בקשות מכל מקור באינטרנט.
 // רשימת מקורות מותרים — ברירת המחדל כוללת את כתובת ה-frontend היציבה + פיתוח
-// מקומי. אפשר להוסיף/לשנות דרך CORS_ORIGINS (מופרד בפסיקים) ב-.env של Render.
+// מקומי. אפשר להוסיף/לשנות דרך CORS_ORIGINS (מופרד בפסיקים) ב-.env של השרת.
 const defaultCorsOrigins = [
-  'https://aladin-frontend-kappa.vercel.app',
   'https://orders.aladincorp.com',
   'http://localhost:5173',
 ];
@@ -28,7 +27,7 @@ const sigma = {
   sidra: Number(process.env.SIGMA_SIDRA || 0),
   pollIntervalMs: Number(process.env.SIGMA_POLL_INTERVAL_MS || 45000), // "כל 30 עד 60 שניות" (סעיף 8.3)
   // סוד שמאמת את ה-Sigma Bridge המקומי כשהוא דוחף (push) הזמנות לנתיב
-  // /api/admin/sigma-sync. זה, ולא SIGMA_SQL_*, מה שצריך להיות מוגדר ב-Render —
+  // /api/admin/sigma-sync. זה, ולא SIGMA_SQL_*, מה שצריך להיות מוגדר בשרת ה-backend —
   // פרטי ה-SQL Server עצמם נשארים רק אצל ה-Bridge המקומי, ר' bridge/README.md.
   bridgeSecret: process.env.SIGMA_BRIDGE_SECRET || null,
 };

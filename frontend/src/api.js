@@ -1,9 +1,8 @@
-// כתובת ה-backend: מוגדרת ב-build דרך VITE_API_BASE (ר' .env.production / Vercel
-// project settings). ברירת המחדל (localhost) מתאימה רק לפיתוח מקומי.
+// כתובת ה-backend: מוגדרת ב-build דרך VITE_API_BASE. ברירת המחדל (localhost) מתאימה רק לפיתוח מקומי.
 const API_ROOT = import.meta.env.VITE_API_BASE || 'http://localhost:4310';
 // PHP-proxy shim (ר' backend/src/server.js, frontend/public/.htaccess) — נדרש
 // בפריסת Cloudways כי ה-nginx שם מעביר ל-Apache רק בקשות שמסתיימות ב-.php.
-// לא רלוונטי בפריסות אחרות (Render/Vercel), אז דלוק רק כש-VITE_API_PHP_SHIM=true.
+// לא רלוונטי בפיתוח מקומי, אז דלוק רק כש-VITE_API_PHP_SHIM=true.
 const USE_PHP_SHIM = import.meta.env.VITE_API_PHP_SHIM === 'true';
 
 function apiUrl(path) {

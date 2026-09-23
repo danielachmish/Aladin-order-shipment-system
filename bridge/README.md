@@ -1,7 +1,7 @@
 # Sigma Bridge מקומי
 
 זה רץ **על השרת הפיזי שלך** (איפה שה-SQL Server של סיגמא נמצא) — לא בענן,
-ולא באותו מקום שבו רץ ה-backend (Render). זו בדיוק הארכיטקטורה שהאפיון עצמו
+ולא באותו מקום שבו רץ ה-backend (Cloudways). זו בדיוק הארכיטקטורה שהאפיון עצמו
 ממליץ עליה (סעיף 7): קריאה מקומית מ-SQL Server, וסנכרון **יוצא בלבד** אל
 הענן דרך HTTPS. ה-SQL Server אף פעם לא נחשף לאינטרנט — לא צריך לפתוח שום
 פורט נכנס אצלכם ברשת.
@@ -17,9 +17,8 @@
    - `SIGMA_SQL_SERVER` / `SIGMA_SQL_DATABASE` / `SIGMA_SQL_USER` / `SIGMA_SQL_PASSWORD` —
      פרטי החיבור המקומיים ל-SQL Server (משתמש עם הרשאת **קריאה בלבד**).
    - `SIGMA_BRIDGE_SECRET` — מחרוזת אקראית ארוכה שתמציא (למשל 32 תווים אקראיים).
-     **חשוב:** את אותו הערך בדיוק צריך גם להגדיר ב-Render, במשתני הסביבה של
-     השירות `aladin-backend` (Render Dashboard → aladin-backend → Environment →
-     הוסף `SIGMA_BRIDGE_SECRET`).
+     **חשוב:** את אותו הערך בדיוק צריך גם להגדיר כ-`SIGMA_BRIDGE_SECRET`
+     ב-`.env` של ה-backend בשרת Cloudways.
    - `BRIDGE_TARGET_URL` — כבר ממולא נכון לכתובת ה-backend הנוכחית.
 
 ## בדיקה ראשונה (חובה לפני התקנה כשירות קבוע)
@@ -52,7 +51,7 @@ npm run install-service
 ## איך יודעים שזה עובד
 
 - בקונסולה (או ב-Event Log של Windows כששירות) יופיעו שורות "סונכרנו X הזמנות".
-- במסך **ניהול** באפליקציה של אלדין (`https://aladin-frontend-kappa.vercel.app`),
+- במסך **ניהול** באפליקציה של אלדין (`https://orders.aladincorp.com`),
   יש כרטיס "מצב חיבורים" שיראה **Sigma: Bridge מקומי מחובר** ברגע שהגיע
   סנכרון מוצלח ראשון.
 - הזמנות אמיתיות מ-Sigma יופיעו ברשימת ההזמנות באפליקציה תוך `SYNC_INTERVAL_MS`

@@ -9,7 +9,7 @@
 
 | חלק | כתובת | הערות |
 |---|---|---|
-| Frontend + Backend | **https://s.aladincorp.com** (לוודא — ר' גם `orders.aladincorp.com` ב-`backend/src/config.js` corsOrigins) | שרת Cloudways יחיד, לא שתי פלטפורמות נפרדות כמו קודם |
+| Frontend + Backend | **https://orders.aladincorp.com** | שרת Cloudways יחיד (Render/Vercel הוסרו) |
 
 התחברות (משתמשי דמו למטה) עובדת בפועל דרך הכתובת הזו.
 
@@ -46,8 +46,10 @@
 - **הדיסק persistent** ב-Cloudways (בניגוד ל-Render free) — `aladin.db`
   (SQLite) לא מתאפס בין הפעלות/דיפלוי, אבל גם אין גיבוי אוטומטי מובנה;
   כדאי לגבות את `backend/aladin.db` ידנית לפני שינויים גדולים.
-- אין כרגע autoDeploy מ-`main` — עדכון קוד בפועל דורש להעלות מחדש את
-  הקבצים (build של frontend + קבצי backend) לשרת Cloudways ידנית.
+- **פריסה אוטומטית**: כל push ל-`main` מריץ את
+  [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) — SSH לשרת,
+  `git reset --hard origin/main`, הפעלה מחדש של ה-backend ב-PM2, ו-build של
+  ה-frontend לתוך `public_html`. פרטים ופריסה ידנית: [DEPLOY.md](DEPLOY.md).
 
 ## חיבור Sigma אמיתי — [`bridge/`](bridge/README.md)
 
@@ -66,8 +68,8 @@
 להצביע על הכתובת הנכונה של ה-backend **כפי שהיא נגישה בפועל מבחוץ**. אם
 ה-backend על Cloudways נגיש רק דרך ה-PHP shim (ר' מעלה), הכתובת צריכה
 להיות בפורמט `https://<domain>/api.php?_p=/admin/sigma-sync` ולא
-`https://<domain>/api/admin/sigma-sync` הרגיל (שמצביע כברירת מחדל על
-Render הישן ב-`.env.example`) — אחרת הבקשות מה-bridge לא מגיעות בכלל
+`https://<domain>/api/admin/sigma-sync` הרגיל (ברירת המחדל ב-`.env.example`
+כבר בפורמט הנכון) — אחרת הבקשות מה-bridge לא מגיעות בכלל
 לתהליך ה-Node, וזה נראה כמו מערכת "מחוברת" אבל בלי הזמנות.
 
 ## מה זה כולל בפועל (לא רק תיאור)
@@ -200,4 +202,3 @@ PLAN.md   תוכנית העבודה המלאה + סטטוס
 3. מעבר ל-PostgreSQL (הסכמה כבר קרובה, יש לבדוק תחביר SQL ספציפי ל-SQLite
    כמו `datetime('now')` ו-`ON CONFLICT`).
 4. החלפת סיסמאות הטקסט-הגלוי ב-hash אמיתי (bcrypt) וסוד JWT מכספת סודות.
-5. פריסה בפועל (Render/Fly/Supabase וכו') כדי לקבל כתובת HTTPS ציבורית ל-Webhook.
