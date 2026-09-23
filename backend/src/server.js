@@ -33,6 +33,9 @@ app.use('/api.php', (req, res, next) => {
     return res.status(400).json({ error: 'bad proxy request' });
   }
   req.url = target;
+  // express מפענח את req.query פעם אחת, מה-URL המקורי (?_p=...) — בלי זה
+  // פרמטרים כמו ?days=30 או ?search= של הנתיב האמיתי הולכים לאיבוד
+  req.query = Object.fromEntries(new URLSearchParams(target.split('?')[1] || ''));
   routes(req, res, next);
 });
 

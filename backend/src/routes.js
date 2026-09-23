@@ -10,6 +10,7 @@ const { emitChange } = require('./bus');
 const { ups: upsCfg, sigma: sigmaCfg } = require('./config');
 const sigmaIngest = require('./sigmaIngest');
 const { computeDashboard } = require('./dashboard');
+const metrics = require('./metrics');
 
 const router = express.Router();
 
@@ -637,6 +638,41 @@ router.get('/dashboard', requireRole('warehouse_manager', 'system_admin'), (req,
     res.json(computeDashboard());
   } catch (e) {
     res.status(500).json({ error: e.message });
+  }
+});
+
+// "המחסן היום" — שמות עובדים רק למנהל מערכת (החלטת דניאל 23.9.2026)
+router.get('/dashboard/warehouse', requireRole('warehouse_manager', 'system_admin'), (req, res) => {
+  try {
+    res.json(metrics.computeWarehouseToday({ includeWorkerNames: req.user.role === 'system_admin' }));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// "תמונת הנהלה" — מנהל מערכת בלבד
+router.get('/dashboard/management', requireRole('system_admin'), (req, res) => {
+  try {
+    res.json(metrics.computeManagement({ days: req.query.days }));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// הגדרות מדידה (כלי ניהול): שעת סגירה, ימי עבודה, עלות עבודה חודשית
+router.get('/settings/metrics', requireRole('system_admin'), (req, res) => {
+  res.json(metrics.getMetricsSettings());
+});
+
+router.post('/settings/metrics', requireRole('system_admin'), (req, res) => {
+  try {
+    const saved = metrics.saveMetricsSettings(req.body || {});
+    db.prepare(`INSERT INTO audit_log (audit_id, user_id, action, detail) VALUES (?, ?, 'metrics_settings', ?)`)
+      .run(`aud_${crypto.randomBytes(8).toString('hex')}`, req.user.id, JSON.stringify(saved));
+    emitChange('settings', { key: 'metrics' });
+    res.json(saved);
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message });
   }
 });
 

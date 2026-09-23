@@ -57,5 +57,8 @@ ensureColumn('order_items_cache', 'qty_verified', 'REAL'); // ר' BARCODE_SCANNI
 ensureColumn('order_items_cache', 'picked_via', 'TEXT');
 ensureColumn('order_items_cache', 'manual_pick_approved_by', 'TEXT');
 ensureColumn('order_items_cache', 'manual_pick_approved_at', 'TEXT');
+ensureColumn('order_items_cache', 'corrected_by_checker', 'INTEGER NOT NULL DEFAULT 0'); // ר' dashboard.js — דיוק ליקוט
+ensureColumn('workflow_state', 'check_started_at', 'TEXT'); // ר' dashboard.js — פיצול המתנה לבדיקה / בדיקה בפועל
+ensureColumn('workflow_state', 'check_started_by', 'TEXT');
 
 module.exports = { db, isNew };

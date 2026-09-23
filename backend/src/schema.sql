@@ -73,6 +73,7 @@ CREATE TABLE IF NOT EXISTS order_items_cache (
                         -- קודם). NULL גם לשורה שסומנה 'missing' אוטומטית — לא נגעה בה יד אדם בכלל.
   manual_pick_approved_by TEXT, -- מנהל מחסן/מנהל מערכת שאישר שורה שנלקטה ידנית — NULL = ממתין
   manual_pick_approved_at TEXT, -- מתי אושרה; מתאפס ל-NULL אוטומטית בכל תיקון חוזר לשורה
+  corrected_by_checker INTEGER NOT NULL DEFAULT 0, -- 1 = הבודק תיקן את מה שהמלקט סימן (correctPickedItem) — טעות ליקוט, לדשבורד
   PRIMARY KEY (order_key, line_no)
 );
 
@@ -136,6 +137,8 @@ CREATE TABLE IF NOT EXISTS workflow_state (
   cod_set_by      TEXT,
   cod_set_at      TEXT,
   planned_delivery_method TEXT, -- ups | self_pickup | NULL — כוונת מנהל מוקדמת (ר' ייעוץ 17.9.2026), נפרד מ-delivery_method שהוא רישום מה שבאמת קרה
+  check_started_at TEXT, -- פעולת הבדיקה הראשונה (סריקה/אישור/תיקון) — מפריד "ממתין לבדיקה" מ"בבדיקה" בדשבורד
+  check_started_by TEXT,
   special_instructions    TEXT, -- הערה חופשית של מנהל ("לא להוציא לפני תשלום" וכו') — נפרד מ-orders_cache.notes שמגיע מסיגמא ונדרס בכל סנכרון
   updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (order_key) REFERENCES orders_cache(order_key)

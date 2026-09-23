@@ -130,6 +130,10 @@ export const api = {
   clearShortedItem: (itemCode) => request(`/inventory/shorted-items/${encodeURIComponent(itemCode)}/clear`, { method: 'POST' }),
 
   dashboard: () => request('/dashboard'),
+  warehouseDashboard: () => request('/dashboard/warehouse'),
+  managementDashboard: (days) => request(`/dashboard/management?days=${Number(days) || 30}`),
+  getMetricsSettings: () => request('/settings/metrics'),
+  saveMetricsSettings: (data) => request('/settings/metrics', { method: 'POST', body: JSON.stringify(data) }),
   pendingOrders: () => request('/pending-orders'),
   shipments: () => request('/shipments'),
 

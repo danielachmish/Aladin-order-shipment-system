@@ -608,3 +608,48 @@ textarea, select {
   .kpi-grid { grid-template-columns: repeat(4, 1fr); }
   .list-grid { grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
 }
+
+/* ---- דשבורדים: "המחסן היום" / "תמונת הנהלה" (23.9.2026) ---- */
+.dashboard-tabs { margin-bottom: 14px; }
+.dashboard-tabs button { font-size: 14px; padding: 8px 16px; }
+.period-toggle { margin-bottom: 6px; }
+.kpi-card .kpi-sub { font-size: 11px; color: var(--muted); margin-top: 4px; }
+.field-row { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+
+.bar-list { display: flex; flex-direction: column; gap: 8px; }
+.bar-list-row { display: grid; grid-template-columns: minmax(88px, 30%) 1fr auto; align-items: center; gap: 10px; font-size: 13px; }
+.bar-list-label { color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bar-list-track { height: 12px; background: var(--teal-light); border-radius: 4px; overflow: hidden; }
+.bar-list-fill { height: 100%; border-radius: 4px; }
+.bar-list-fill.teal { background: var(--teal); }
+.bar-list-fill.red { background: var(--red); }
+.bar-list-value { font-weight: bold; white-space: nowrap; min-width: 32px; }
+.bar-list-alert { color: var(--red); font-weight: bold; }
+
+.due-progress-track { height: 14px; background: var(--teal-light); border-radius: 7px; overflow: hidden; }
+.due-progress-fill { height: 100%; background: var(--green); border-radius: 7px; transition: width .3s; }
+.due-progress-text { font-size: 13px; margin-top: 6px; }
+
+.stage-bar { display: flex; gap: 2px; height: 28px; border-radius: 6px; overflow: hidden; }
+.stage-seg { display: flex; align-items: center; justify-content: center; min-width: 4px; font-size: 11px; white-space: nowrap; overflow: hidden; }
+.stage-seg.work { background: var(--teal); color: #fff; }
+.stage-seg.wait { background: #D3D6DB; color: var(--text); }
+.stage-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 8px; font-size: 12px; color: var(--muted); }
+.stage-legend-item b { color: var(--text); }
+.stage-dot { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-inline-end: 5px; vertical-align: -1px; }
+.stage-dot.work { background: var(--teal); }
+.stage-dot.wait { background: #D3D6DB; }
+
+.chart-wrap { position: relative; }
+.chart-tooltip { font-size: 12px; color: var(--muted); min-height: 18px; margin-bottom: 4px; }
+.chart-svg { display: block; touch-action: pan-y; direction: ltr; overflow: visible; }
+.chart-axis { stroke: var(--border); stroke-width: 1; }
+.chart-bar { fill: var(--teal); }
+.chart-bar.active { fill: var(--teal-dark); }
+.chart-line { fill: none; stroke: var(--teal); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.chart-dot { fill: var(--teal); stroke: #fff; stroke-width: 2; }
+.chart-crosshair { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; }
+.chart-tick { font-size: 11px; fill: var(--muted); }
+.chart-table { margin-top: 6px; font-size: 12px; }
+.chart-table summary { cursor: pointer; color: var(--teal); }
+.dash-note { font-size: 12px; color: var(--muted); }

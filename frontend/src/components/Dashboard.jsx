@@ -2,15 +2,13 @@ import React, { useEffect, useState } from 'react';
 import { api } from '../api.js';
 import { onLive } from '../ws.js';
 import { shipLabel, statusLabel, priorityLabel } from '../labels.js';
-import { formatDateSafe, formatCurrencySafe } from '../format.js';
+import { formatDateSafe } from '../format.js';
+import WarehouseToday from './WarehouseToday.jsx';
+import ManagementView from './ManagementView.jsx';
 
-function trend(today, yesterday) {
-  if (yesterday === 0 && today === 0) return null;
-  const diff = today - yesterday;
-  if (diff === 0) return <span className="kpi-trend">ללא שינוי מאתמול</span>;
-  const up = diff > 0;
-  return <span className={`kpi-trend ${up ? 'up' : 'down'}`}>{up ? '▲' : '▼'} {Math.abs(diff)} מאתמול</span>;
-}
+// בלי WebSocket (פריסת Cloudways דרך api.php) אין עדכון חי — מרעננים לבד
+const WAREHOUSE_REFRESH_MS = 60 * 1000;
+const MANAGEMENT_REFRESH_MS = 5 * 60 * 1000;
 
 function firstName(name) {
   if (!name) return '';
@@ -23,18 +21,23 @@ const ACTIVE_SHIP_STATUSES = ['ship_sorting', 'ship_to_pickup_point', 'ship_wait
 // ומשלוחים פעילים כפאנלים ניתנים לפעולה, בהשראת מסך הבית של UPS Ship
 // ששלח דניאל (14.9.2026) — "שהמנהל יוכל להיות רק עליו ולהבין מה קורה".
 export default function Dashboard({ user, onOpenOrder }) {
+  const isAdmin = user?.role === 'system_admin';
+  const [view, setView] = useState('warehouse'); // warehouse | management
   const [d, setD] = useState(null);
+  const [mgmt, setMgmt] = useState(null);
+  const [days, setDays] = useState(30);
   const [exceptions, setExceptions] = useState(null);
   const [pendingUrgent, setPendingUrgent] = useState([]);
   const [shipments, setShipments] = useState([]);
   const [orders, setOrders] = useState([]);
   const [busy, setBusy] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(null);
+  const [loadError, setLoadError] = useState(null);
 
   async function load() {
     try {
       const [dash, exc, pu, ship, ord] = await Promise.all([
-        api.dashboard(),
+        api.warehouseDashboard(),
         api.exceptions(),
         api.pendingUrgent(),
         api.shipments(),
@@ -46,8 +49,19 @@ export default function Dashboard({ user, onOpenOrder }) {
       setShipments(ship.shipments);
       setOrders(ord.orders);
       setLastUpdated(new Date());
-    } catch {
-      // שקט: אם השרת עדיין לא עודכן, פשוט לא מציגים דשבורד
+      setLoadError(null);
+    } catch (e) {
+      setLoadError(e.message || 'שגיאה בטעינת הדשבורד');
+    }
+  }
+
+  async function loadManagement(n = days) {
+    try {
+      setMgmt(await api.managementDashboard(n));
+      setLastUpdated(new Date());
+      setLoadError(null);
+    } catch (e) {
+      setLoadError(e.message || 'שגיאה בטעינת תמונת ההנהלה');
     }
   }
 
@@ -56,8 +70,16 @@ export default function Dashboard({ user, onOpenOrder }) {
     const off = onLive((evt) => {
       if (['order', 'urgent_request', 'shipment', '__connected'].includes(evt.type)) load();
     });
-    return off;
+    const timer = setInterval(load, WAREHOUSE_REFRESH_MS);
+    return () => { off(); clearInterval(timer); };
   }, []);
+
+  useEffect(() => {
+    if (view !== 'management') return undefined;
+    loadManagement(days);
+    const timer = setInterval(() => loadManagement(days), MANAGEMENT_REFRESH_MS);
+    return () => clearInterval(timer);
+  }, [view, days]);
 
   async function decide(id, approve) {
     setBusy(true);
@@ -79,9 +101,8 @@ export default function Dashboard({ user, onOpenOrder }) {
     }
   }
 
-  if (!d) return null;
+  if (!d) return loadError ? <div className="error-box">{loadError}</div> : null;
 
-  const activeTotal = Object.values(d.counts).reduce((a, b) => a + b, 0);
   const onHold = exceptions?.onHold || [];
   const linkExceptions = exceptions?.linkExceptions || [];
   const shipmentExceptions = exceptions?.shipmentExceptions || [];
@@ -90,6 +111,7 @@ export default function Dashboard({ user, onOpenOrder }) {
     .filter((o) => !['closed', 'cancelled'].includes(o.status))
     .sort((a, b) => (a.queue_position ? a.queue_position.position : Infinity) - (b.queue_position ? b.queue_position.position : Infinity))
     .slice(0, 12);
+  const activeTotal = orders.filter((o) => !['closed', 'cancelled'].includes(o.status)).length;
   const exceptionsTotal = onHold.length + linkExceptions.length + shipmentExceptions.length;
 
   return (
@@ -99,33 +121,19 @@ export default function Dashboard({ user, onOpenOrder }) {
         {lastUpdated && <div className="dashboard-updated">עודכן לאחרונה: {lastUpdated.toLocaleTimeString('he-IL')}</div>}
       </div>
 
-      <div className="kpi-grid">
-        <div className="kpi-card">
-          <div className="kpi-label">📦 הזמנות פעילות כרגע</div>
-          <div className="kpi-value">{activeTotal}</div>
+      {isAdmin && (
+        <div className="dashboard-tabs toggle">
+          <button className={view === 'warehouse' ? 'active' : ''} onClick={() => setView('warehouse')}>🏭 המחסן היום</button>
+          <button className={view === 'management' ? 'active' : ''} onClick={() => setView('management')}>📊 תמונת הנהלה</button>
         </div>
-        <div className="kpi-card">
-          <div className="kpi-label">✅ נסגרו היום</div>
-          <div className="kpi-value">{d.closedToday}</div>
-          {trend(d.closedToday, d.closedYesterday)}
-        </div>
-        <div className="kpi-card">
-          <div className="kpi-label">⏱️ זמן ליקוט ממוצע (7 ימים)</div>
-          <div className="kpi-value">{d.avgPickMinutes != null ? `${d.avgPickMinutes} דק'` : '—'}</div>
-        </div>
-        <div className={'kpi-card' + (d.stuck.length > 0 ? ' alert' : '')}>
-          <div className="kpi-label">⚠️ תקועות בליקוט מעל {d.stuckThresholdMinutes / 60} שעות</div>
-          <div className="kpi-value">{d.stuck.length}</div>
-        </div>
-        <div className="kpi-card wide">
-          <div className="kpi-label">💰 שווי כספי בצנרת (הזמנות פעילות)</div>
-          <div className="kpi-value">{formatCurrencySafe(d.pipelineValue)}</div>
-        </div>
-        <div className="kpi-card wide">
-          <div className="kpi-label">🎯 עמידה ביעד — נסגר תוך 24 שעות (30 ימים, {d.slaSampleSize} הזמנות)</div>
-          <div className="kpi-value">{d.slaPercent != null ? `${d.slaPercent}%` : 'אין עדיין נתונים'}</div>
-        </div>
-      </div>
+      )}
+      {loadError && <div className="error-box">{loadError}</div>}
+
+      {view === 'management' ? (
+        mgmt ? <ManagementView data={mgmt} days={days} onChangeDays={setDays} /> : <div className="empty-state">טוען…</div>
+      ) : (
+      <>
+      <WarehouseToday data={d} onOpenOrder={onOpenOrder} />
 
       {/* ---- הזמנות פעילות ---- */}
       <div className="settings-card">
@@ -267,42 +275,7 @@ export default function Dashboard({ user, onOpenOrder }) {
         )}
       </div>
 
-      {d.stuck.length > 0 && (
-        <div className="settings-card">
-          <div className="settings-card-title">🐢 הזמנות תקועות בליקוט</div>
-          <div className="scroll-panel">
-            {d.stuck.map((o) => (
-              <div className="admin-list-item" key={o.order_key} onClick={() => onOpenOrder(o.order_key)} style={{ cursor: 'pointer' }}>
-                <div className="top"><b>הזמנה {o.order_num}</b><span className="meta">{o.customer_name}</span></div>
-                <div className="meta" style={{ color: '#c0392b' }}>{Math.round(o.minutes_in_status / 60 * 10) / 10} שעות בליקוט</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {d.byAgent.length > 0 && (
-        <div className="settings-card">
-          <div className="settings-card-title">👤 פילוח לפי סוכן</div>
-          <div style={{ overflowX: 'auto' }}>
-            <div className="scroll-panel">
-              <table className="agent-table">
-                <thead>
-                  <tr><th>סוכן</th><th>הזמנות פעילות</th><th>ממתין לתשובה</th></tr>
-                </thead>
-                <tbody>
-                  {d.byAgent.map((a) => (
-                    <tr key={a.agent_name}>
-                      <td>{a.agent_name}</td>
-                      <td>{a.active_count}</td>
-                      <td>{a.waiting_answer_count || 0}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
+      </>
       )}
     </div>
   );

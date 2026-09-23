@@ -77,6 +77,8 @@ export default function ManagementTools({ user }) {
         </div>
       )}
 
+      {user && user.role === 'system_admin' && <MetricsSettings />}
+
       {user && user.role === 'system_admin' && <WooCommerceSettings />}
 
       <div className="settings-card">
@@ -174,6 +176,77 @@ function WooCommerceSettings() {
       <div className="meta" style={{ marginTop: 10 }}>
         סטטוס חיבור: <b>{settings?.configured ? 'מוגדר ✓' : 'לא מוגדר'}</b>
       </div>
+    </div>
+  );
+}
+
+// הגדרות מדידה לדשבורד (מנהל מערכת בלבד, בקשת דניאל 23.9.2026): שעת הסגירה
+// שעד אליה הזמנה עוד יכולה לצאת באותו יום, ימי עבודה, ועלות עבודה חודשית
+// של צוות המחסן — ממנה מחושבת "עלות עבודה להזמנה" בתמונת ההנהלה.
+const WEEKDAY_NAMES = ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'];
+
+function MetricsSettings() {
+  const [cutoffTime, setCutoffTime] = useState('12:00');
+  const [workdays, setWorkdays] = useState([0, 1, 2, 3, 4]);
+  const [laborCost, setLaborCost] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    api.getMetricsSettings().then((s) => {
+      setCutoffTime(s.cutoffTime);
+      setWorkdays(s.workdays);
+      setLaborCost(s.monthlyLaborCost != null ? String(s.monthlyLaborCost) : '');
+    }).catch(() => {});
+  }, []);
+
+  function toggleDay(d) {
+    setSaved(false);
+    setWorkdays((cur) => (cur.includes(d) ? cur.filter((x) => x !== d) : [...cur, d].sort()));
+  }
+
+  async function save() {
+    setBusy(true);
+    setSaved(false);
+    setError(null);
+    try {
+      await api.saveMetricsSettings({ cutoffTime, workdays, monthlyLaborCost: laborCost === '' ? null : Number(laborCost) });
+      setSaved(true);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="settings-card">
+      <div className="settings-card-title">📏 הגדרות מדידה (דשבורד)</div>
+      <div className="form-stack">
+        <label className="field-row">
+          <span>שעת סגירה — עד מתי הזמנה צריכה להיכנס כדי לצאת באותו יום</span>
+          <input className="text-input" type="time" value={cutoffTime} onChange={(e) => { setCutoffTime(e.target.value); setSaved(false); }} style={{ maxWidth: 140 }} />
+        </label>
+        <div className="field-row">
+          <span>ימי עבודה</span>
+          <div className="toggle">
+            {WEEKDAY_NAMES.map((n, i) => (
+              <button key={i} type="button" className={workdays.includes(i) ? 'active' : ''} onClick={() => toggleDay(i)}>{n}</button>
+            ))}
+          </div>
+        </div>
+        <label className="field-row">
+          <span>עלות עבודה חודשית של צוות המחסן (₪, כולל עלות מעביד) — לא חובה</span>
+          <input className="text-input" type="number" min="0" inputMode="numeric" placeholder="למשל 24000" value={laborCost}
+            onChange={(e) => { setLaborCost(e.target.value); setSaved(false); }} style={{ maxWidth: 180 }} />
+        </label>
+      </div>
+      <div className="btn-row">
+        <button className="action-btn" disabled={busy || workdays.length === 0} onClick={save}>שמירה</button>
+      </div>
+      {saved && <div className="live-pill on" style={{ marginTop: 8 }}>✓ נשמר</div>}
+      {error && <div className="error-box" style={{ marginTop: 8 }}>{error}</div>}
     </div>
   );
 }

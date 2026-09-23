@@ -143,7 +143,17 @@ function finishPicking(orderKey, userId, expectedVersion) {
   ).get(orderKey).c;
   if (untouched > 0) throw new RuleError(`יש ${untouched} שורות שעדיין לא סומנו`);
 
-  return writeTransition(orderKey, userId, 'ready_for_check', {}, 'סיום ליקוט — ממתין לבדיקה');
+  return writeTransition(orderKey, userId, 'ready_for_check', { check_started_at: null, check_started_by: null }, 'סיום ליקוט — ממתין לבדיקה');
+}
+
+// רישום רגע תחילת הבדיקה (הפעולה הראשונה של הבודק בשלב ready_for_check) —
+// בלי זה אי אפשר להפריד בדשבורד בין "חיכתה לבודק" ל"נבדקה בפועל", כי המעבר
+// היחיד שנרשם הוא סיום הבדיקה. מתאפס ב-finishPicking (סבב בדיקה חדש).
+function markCheckStarted(orderKey, userId) {
+  db.prepare(`
+    UPDATE workflow_state SET check_started_at = datetime('now'), check_started_by = ?
+    WHERE order_key = ? AND check_started_at IS NULL
+  `).run(userId || null, orderKey);
 }
 
 // בדיקה (QC) — יכול לבצע אותו יוזר מחסן שליקט (login משותף בפועל, לא נאכף
@@ -156,6 +166,7 @@ function updateItemCheck(orderKey, lineNo, userId, { checked, checkNote }) {
   const item = db.prepare('SELECT * FROM order_items_cache WHERE order_key = ? AND line_no = ?').get(orderKey, lineNo);
   if (!item) throw new RuleError('שורת פריט לא נמצאה');
   if (item.pick_status === 'missing') throw new RuleError('אין מה לבדוק בשורה שסומנה כחסרה');
+  markCheckStarted(orderKey, userId);
 
   // אישור ידני הוא override מלא (בדיוק כמו "✓ ליקטתי הכל" בליקוט) — כשמאשרים
   // כך, qty_verified מתעדכן ל-qty_picked כדי שהמונה לא יסתור את "מאושר" (ר'
@@ -183,6 +194,7 @@ function correctPickedItem(orderKey, lineNo, userId, { qtyPicked, pickStatus, ch
   if (!['picked', 'partial', 'missing'].includes(pickStatus)) throw new RuleError('סטטוס ליקוט לא תקין');
   const item = db.prepare('SELECT 1 FROM order_items_cache WHERE order_key = ? AND line_no = ?').get(orderKey, lineNo);
   if (!item) throw new RuleError('שורת פריט לא נמצאה');
+  markCheckStarted(orderKey, userId);
 
   // checked=1 נכפה כאן (הבודק כבר קבע את השורה בעצמו) — אז qty_verified חייב
   // לעקוב אחרי qty_picked החדש (או NULL ל-missing, אין מה לאמת) כדי לא להשאיר
@@ -190,7 +202,7 @@ function correctPickedItem(orderKey, lineNo, userId, { qtyPicked, pickStatus, ch
   db.prepare(`
     UPDATE order_items_cache
     SET qty_picked = ?, pick_status = ?, checked = 1, check_note = ?, pick_marked_at = datetime('now'),
-        auto_missing = 0, qty_verified = ?, picked_via = 'manual', manual_pick_approved_by = NULL, manual_pick_approved_at = NULL
+        corrected_by_checker = 1, auto_missing = 0, qty_verified = ?, picked_via = 'manual', manual_pick_approved_by = NULL, manual_pick_approved_at = NULL
     WHERE order_key = ? AND line_no = ?
   `).run(
     pickStatus === 'missing' ? 0 : qtyPicked, pickStatus, checkNote || null,
@@ -321,6 +333,7 @@ function scanForPicking(orderKey, barcode, clientEventId, userId, deviceId, qty 
 // יש. שורה 'missing' לא ניתנת לסריקת בדיקה בכלל (אותו כלל כמו אישור ידני
 // ב-updateItemCheck). ר' BARCODE_SCANNING_SPEC.md סעיף 1.2.
 function scanForVerification(orderKey, barcode, clientEventId, userId, deviceId, qty = 1) {
+  markCheckStarted(orderKey, userId);
   const candidates = sortByLocationThenLine(
     db.prepare('SELECT * FROM order_items_cache WHERE order_key = ? AND barcode = ?').all(orderKey, barcode)
   );
@@ -489,6 +502,7 @@ function finishCheck(orderKey, userId, expectedVersion) {
   if (unchecked > 0) throw new RuleError(`יש ${unchecked} שורות שעדיין לא אושרו בבדיקה`);
 
   assertManualPicksApproved(orderKey);
+  markCheckStarted(orderKey, userId);
 
   // לא לתת להזמנה עם תוספת ממתינה לעבור לאריזה — מישהו עלול לארוז ולשלוח
   // בלי הפריט שעוד בדרך. חוסמים כאן (לא רק בסגירה כמו קודם), עם קוד ייעודי
@@ -513,6 +527,7 @@ function skipCheck(orderKey, userId, expectedVersion) {
   assertVersion(state, expectedVersion);
 
   assertManualPicksApproved(orderKey);
+  markCheckStarted(orderKey, userId);
 
   const updated = writeTransition(orderKey, userId, 'ready_to_pack', {}, 'דילוג על שלב הבדיקה — הכל נסרק/אושר');
   propagateConfirmedShortages(orderKey, userId);
