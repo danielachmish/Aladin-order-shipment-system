@@ -6,7 +6,7 @@
 const crypto = require('crypto');
 const { db } = require('./db');
 const { emitChange } = require('./bus');
-const { ACTIVE_STATUSES } = require('./workflow');
+const { ACTIVE_STATUSES, SYNC_HOLD_REASON } = require('./workflow');
 
 function uid(prefix) {
   return `${prefix}_${crypto.randomBytes(8).toString('hex')}`;
@@ -153,7 +153,7 @@ function reconcileOpenOrders(companyId, sidra, validOrderNums) {
           UPDATE workflow_state
           SET status = 'on_hold', hold_reason = ?, pre_wait_status = ?, version = version + 1, updated_at = datetime('now')
           WHERE order_key = ?
-        `).run('ההזמנה כבר לא מופיעה כפתוחה בסיגמא (כנראה שורשרה במלואה לחשבונית) — נדרשת בדיקה וסגירה ידנית', r.status, r.order_key);
+        `).run(SYNC_HOLD_REASON, r.status, r.order_key);
         db.prepare(`
           INSERT INTO workflow_events (event_id, order_key, user_id, from_status, to_status, note)
           VALUES (?, ?, NULL, ?, 'on_hold', 'הועברה אוטומטית לעיכוב — הוסרה מסנכרון Sigma באמצע עבודה')

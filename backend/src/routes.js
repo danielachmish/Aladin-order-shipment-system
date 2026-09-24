@@ -529,6 +529,12 @@ router.post('/orders/:key/issue', requireRole('warehouse', 'warehouse_manager'),
 router.post('/orders/:key/release-hold', requireRole('warehouse', 'warehouse_manager', 'system_admin'),
   handleWorkflowAction((key, req) => wf.releaseHold(key, req.user.id, req.body?.note)));
 
+// סגירה ישירה של הזמנה שנחסמה כי כבר שורשרה לחשבונית בסיגמא (ר' workflow.js
+// closeStuckOrder) — מנהל בלבד, בכוונה בנפרד מ-release-hold הרגיל (שחוזר
+// לסטטוס פעיל ולא סוגר בפועל — זו הייתה הבעיה שדניאל דיווח עליה 24.9.2026).
+router.post('/orders/:key/close-stuck', requireRole('warehouse_manager', 'system_admin'),
+  handleWorkflowAction((key, req) => wf.closeStuckOrder(key, req.user.id)));
+
 router.post('/orders/:key/cancel', requireRole('warehouse_manager', 'system_admin'),
   handleWorkflowAction((key, req) => wf.cancelOrder(key, req.user.id, req.body?.note)));
 

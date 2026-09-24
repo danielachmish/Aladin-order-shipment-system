@@ -89,6 +89,7 @@ export const api = {
   closeOrder: (key) => request(`/orders/${encodeURIComponent(key)}/close`, { method: 'POST', body: JSON.stringify({}) }),
   reportIssue: (key, reason) => request(`/orders/${encodeURIComponent(key)}/issue`, { method: 'POST', body: JSON.stringify({ reason }) }),
   releaseHold: (key, note) => request(`/orders/${encodeURIComponent(key)}/release-hold`, { method: 'POST', body: JSON.stringify({ note }) }),
+  closeStuckOrder: (key) => request(`/orders/${encodeURIComponent(key)}/close-stuck`, { method: 'POST', body: JSON.stringify({}) }),
   cancelOrder: (key, note) => request(`/orders/${encodeURIComponent(key)}/cancel`, { method: 'POST', body: JSON.stringify({ note }) }),
   requestWait: (key) => request(`/orders/${encodeURIComponent(key)}/request-wait`, { method: 'POST', body: JSON.stringify({}) }),
   receivedAnswer: (key) => request(`/orders/${encodeURIComponent(key)}/received-answer`, { method: 'POST', body: JSON.stringify({}) }),
