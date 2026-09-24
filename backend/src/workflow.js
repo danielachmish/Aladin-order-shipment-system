@@ -27,6 +27,13 @@ class RuleError extends Error {
 
 const ACTIVE_STATUSES = ['open', 'waiting_pick', 'picking', 'ready_for_check', 'ready_to_pack', 'waiting_pickup', 'delivered_to_ups'];
 
+// hold_reason קבוע שמסמן עיכוב שנוצר אוטומטית ע"י sigmaIngest.reconcileOpenOrders
+// (ההזמנה כבר שורשרה לחשבונית בסיגמא) — לא עיכוב מדיווח בעיה ידני (reportIssue).
+// closeStuckOrder בודק את הטקסט הזה בדיוק כדי לאפשר סגירה ישירה רק על עיכוב
+// כזה, ולא על הזמנה שמישהו דיווח עליה בעיה אמיתית (שם סגירה חד-כפתורית הייתה
+// יכולה להסתיר בעיה שלא נפתרה). ר' בקשת דניאל 24.9.2026.
+const SYNC_HOLD_REASON = 'ההזמנה כבר לא מופיעה כפתוחה בסיגמא (כנראה שורשרה במלואה לחשבונית) — נדרשת בדיקה וסגירה ידנית';
+
 // סדר השלבים הפיזיים של הזמנה (ליקוט -> בדיקה -> אריזה -> משלוח -> סגירה).
 // משמש רק לאכיפת קישור הזמנות (ר' assertLinkedGroupReady) — לא לשום דבר אחר.
 const STATUS_INDEX = {
@@ -624,6 +631,23 @@ function closeOrder(orderKey, userId) {
   return writeTransition(orderKey, userId, 'closed', {}, 'סגירה');
 }
 
+// סגירה ישירה של הזמנה שנחסמה אוטומטית כי היא כבר שורשרה לחשבונית בסיגמא
+// (ר' SYNC_HOLD_REASON) — לא דורשת מסירה ל-UPS, כי ההזמנה כבר הושלמה בפועל
+// בצד סיגמא. "שחרור חסימה" הרגיל לא מתאים כאן: הוא מחזיר את ההזמנה לסטטוס
+// הפעיל הקודם, שגורם לה להיחסם שוב בסבב הסנכרון הבא (לולאה אינסופית —
+// ר' דיווח דניאל 24.9.2026). זמין רק למנהל, ורק על עיכוב מהסיבה הזו בדיוק —
+// לא על הזמנה שנחסמה מדיווח בעיה ידני (reportIssue), כדי לא לאפשר סגירה
+// חד-כפתורית שמסתירה בעיה אמיתית שלא נפתרה.
+function closeStuckOrder(orderKey, managerId) {
+  const state = getState(orderKey);
+  if (!state) throw new RuleError('הזמנה לא נמצאה');
+  if (state.status !== 'on_hold') throw new RuleError('ההזמנה אינה מעוכבת');
+  if (state.hold_reason !== SYNC_HOLD_REASON) {
+    throw new RuleError('ניתן לסגור ישירות רק הזמנה שנחסמה כי היא כבר שורשרה לחשבונית בסיגמא — לא הזמנה עם בעיה מדווחת');
+  }
+  return writeTransition(orderKey, managerId, 'closed', { hold_reason: null, pre_wait_status: null }, 'סגירה ידנית — כבר שורשרה לחשבונית בסיגמא');
+}
+
 // "תוספת" בדרך (סוכן/מנהל) — לא משנה סטטוס, רק חוסם סגירה עד שהתוספת תסומן
 // כהגיעה. ר' בקשת דניאל 14.9.2026: "שהמחסן לא יסגרו את ההזמנה עד שתגיע התוספת".
 function requestAddition(orderKey, userId, note) {
@@ -1076,8 +1100,8 @@ function unlinkOrder(orderKey, userId) {
 }
 
 module.exports = {
-  ConflictError, RuleError, ACTIVE_STATUSES,
-  getState, claimOrder, finishPicking, packDone, deliverToUps, selfPickup, closeOrder,
+  ConflictError, RuleError, ACTIVE_STATUSES, SYNC_HOLD_REASON,
+  getState, claimOrder, finishPicking, packDone, deliverToUps, selfPickup, closeOrder, closeStuckOrder,
   reportIssue, releaseHold, cancelOrder, requestWait, receivedAnswer, setPriority,
   requestAddition, additionReceived,
   updateItemPick, updateItemCheck, finishCheck, skipCheck, correctPickedItem, scanItem,

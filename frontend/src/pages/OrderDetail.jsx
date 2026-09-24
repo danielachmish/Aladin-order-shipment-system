@@ -412,6 +412,16 @@ export default function OrderDetail({ user, orderKey, onBack }) {
       {(isWarehouse || user.role === 'system_admin') && order.status === 'on_hold' && (
         <button className="action-btn" disabled={busy} onClick={() => act(() => api.releaseHold(orderKey))}>שחרור חסימה</button>
       )}
+      {/* "שחרור חסימה" רק מחזיר לסטטוס הפעיל הקודם ולא באמת סוגר — הזמנה
+          שכבר שורשרה לחשבונית בסיגמא תיחסם שוב בסבב הסנכרון הבא (לולאה
+          אינסופית, ר' דיווח דניאל 24.9.2026). כפתור נפרד, מנהל בלבד, שסוגר
+          ישירות — זמין רק על הסיבה הספציפית הזו (SYNC_HOLD_REASON בבקאנד). */}
+      {isManager && order.status === 'on_hold' &&
+        order.hold_reason === 'ההזמנה כבר לא מופיעה כפתוחה בסיגמא (כנראה שורשרה במלואה לחשבונית) — נדרשת בדיקה וסגירה ידנית' && (
+        <button className="action-btn secondary" disabled={busy} onClick={() => act(() => api.closeStuckOrder(orderKey))}>
+          🔒 סגור ידנית — כבר הושלמה בסיגמא
+        </button>
+      )}
 
       {isManager && order.status === 'waiting_pick' && (
         <div className="btn-row">
