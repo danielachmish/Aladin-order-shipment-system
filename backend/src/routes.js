@@ -66,12 +66,15 @@ router.get('/health', (req, res) => {
 
 // ---------- UPS Webhook ----------
 // ממוקם לפני authMiddleware בכוונה: UPS קורא לנתיב הזה בלי טוקן JWT פנימי שלנו.
-// אימות: נדרש Authorization: Bearer <UPS_WEBHOOK_BEARER_SECRET> תמיד מעל HTTPS
-// (סעיף 9.2, 13).
+// אימות (סעיף 9.2, 13): בקשה מתקבלת אם היא נושאת Authorization: Bearer <UPS_WEBHOOK_BEARER_SECRET>,
+// או אם היא מגיעה מכתובת IP שמופיעה ב-UPS_WEBHOOK_ALLOWED_IPS. UPS ישראל הודיעו
+// (28.9.2026) שהם לא יכולים לשלוח אימות, ולכן בפועל ההגנה אצלם היא רשימת ה-IP.
+// זיהוי ה-IP נשען על req.ip, כלומר על trust proxy ב-server.js ועל X-Forwarded-For
+// שה-api.php קובע מ-REMOTE_ADDR — לא על כותרת שהלקוח שלח.
 // תיקון אבטחה (סקירה 14.9.2026): קודם, כשהסוד לא היה מוגדר, הנתיב פשוט קיבל כל
 // בקשה בלי אימות ("נכשל פתוח") — נתיב חשוף לאינטרנט שיכול לגרום לסגירה אוטומטית
-// של הזמנות אמיתיות (ship_delivered -> closeOrder). עכשיו: אם הסוד לא מוגדר,
-// הנתיב נדחה כברירת מחדל. לבדיקה מקומית בלי סוד: הגדירו
+// של הזמנות אמיתיות (ship_delivered -> closeOrder). עכשיו: אם לא הוגדרו לא סוד ולא
+// רשימת IP, הנתיב נדחה כברירת מחדל. לבדיקה מקומית בלי אימות: הגדירו
 // ALLOW_UNAUTHENTICATED_UPS_WEBHOOK=true במפורש בסביבת הפיתוח שלכם בלבד.
 //
 // פורמט התשובה (כל התשובות, הצלחה וכישלון כאחד) נקבע ע"י UPS (ירדן, 22.9.2026):
@@ -85,23 +88,36 @@ function webhookReply(res, status, { trackNo, ok, errorCode, errorMessage }) {
   });
 }
 
+// Node מציג כתובת IPv4 שהגיעה על socket של IPv6 כ-"::ffff:1.2.3.4"
+function webhookClientIp(req) {
+  const ip = req.ip || req.socket?.remoteAddress || '';
+  return ip.startsWith('::ffff:') ? ip.slice(7) : ip;
+}
+
 router.post('/webhooks/ups', express.json(), (req, res) => {
-  const devBypass = !upsCfg.webhookBearerSecret && process.env.ALLOW_UNAUTHENTICATED_UPS_WEBHOOK === 'true';
+  const secret = upsCfg.webhookBearerSecret;
+  const allowedIps = upsCfg.webhookAllowedIps || [];
+  const devBypass = !secret && !allowedIps.length && process.env.ALLOW_UNAUTHENTICATED_UPS_WEBHOOK === 'true';
   if (!devBypass) {
-    if (!upsCfg.webhookBearerSecret) {
+    if (!secret && !allowedIps.length) {
       return webhookReply(res, 503, {
         trackNo: req.body && req.body.trackNo,
         ok: false,
-        errorMessage: 'UPS_WEBHOOK_BEARER_SECRET לא מוגדר בשרת — Webhook חסום',
+        errorMessage: 'לא הוגדרו UPS_WEBHOOK_BEARER_SECRET או UPS_WEBHOOK_ALLOWED_IPS בשרת — Webhook חסום',
       });
     }
     const header = req.headers.authorization || '';
     const token = header.startsWith('Bearer ') ? header.slice(7) : null;
-    if (token !== upsCfg.webhookBearerSecret) {
+    const ip = webhookClientIp(req);
+    const bearerOk = !!secret && token === secret;
+    const ipOk = allowedIps.includes(ip);
+    if (!bearerOk && !ipOk) {
+      console.warn(`UPS webhook נדחה: כתובת מקור ${ip || 'לא ידועה'}`);
       return webhookReply(res, 401, {
         trackNo: req.body && req.body.trackNo,
         ok: false,
-        errorMessage: 'אימות Webhook נכשל',
+        // הכתובת שזוהתה מוחזרת כדי שאפשר יהיה לוודא אחרי פריסה שהשרת רואה את ה-IP האמיתי
+        errorMessage: `אימות Webhook נכשל (כתובת מקור: ${ip || 'לא ידועה'})`,
       });
     }
   }
@@ -971,7 +987,9 @@ router.get('/admin/integrations-status', requireRole('warehouse_manager', 'syste
       lastRun: lastSigma || null,
     },
     ups: {
-      webhookAuthEnabled: !!upsCfg2.webhookBearerSecret,
+      webhookAuthEnabled: !!upsCfg2.webhookBearerSecret || upsCfg2.webhookAllowedIps.length > 0,
+      webhookBearerEnabled: !!upsCfg2.webhookBearerSecret,
+      webhookAllowedIps: upsCfg2.webhookAllowedIps,
       reconcileEnabled: upsCfg2.reconcileEnabled,
       lastReconcile: lastUps || null,
     },

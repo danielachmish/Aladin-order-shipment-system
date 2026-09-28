@@ -94,8 +94,10 @@
   ומסנכרן ל-`orders_cache`/`order_items_cache` כל 45 שניות (ניתן לשינוי).
 - **`backend/src/upsClient.js`** — OAuth client-credentials מול UPS, קריאת סטטוס
   משלוח (`wb-status`), הגבלת קצב (100/דקה, 1000/שעה) ובדיקת התאמה תקופתית (סעיף 9.4).
-- **אימות Webhook** — כשיוגדר `UPS_WEBHOOK_BEARER_SECRET`, `POST /api/webhooks/ups`
-  ידרוש `Authorization: Bearer <secret>` תואם (סעיף 9.2, 13).
+- **אימות Webhook** — `POST /api/webhooks/ups` מקבל בקשה אם היא נושאת
+  `Authorization: Bearer <UPS_WEBHOOK_BEARER_SECRET>` תואם (סעיף 9.2, 13), או אם היא מגיעה
+  מכתובת שמופיעה ב-`UPS_WEBHOOK_ALLOWED_IPS`. UPS ישראל לא שולחים אימות, אז אצלם
+  משתמשים ברשימת ה-IP (ר' `.env.example`). בלי אף אחד מהשניים, הנתיב חסום.
 
 **כדי להפעיל בפועל:** להעתיק `backend/.env.example` ל-`backend/.env` (הקובץ ב-.gitignore,
 לא עולה ל-git) ולמלא:
@@ -103,7 +105,7 @@
 | מה צריך | ממי | משתנה |
 |---|---|---|
 | שרת SQL, DB, משתמש/סיסמה לקריאה בלבד | מחשוב מקומי | `SIGMA_SQL_*` |
-| כתובת Webhook + סוד Bearer | UPS (`hd@ups.co.il`, סעיף 9.2) | `UPS_WEBHOOK_BEARER_SECRET` |
+| כתובת Webhook + סוד Bearer או כתובות IP של UPS | UPS (`hd@ups.co.il`, סעיף 9.2) | `UPS_WEBHOOK_BEARER_SECRET` / `UPS_WEBHOOK_ALLOWED_IPS` |
 | OAuth client id/secret (לא חובה להתחלה) | UPS Developer Portal | `UPS_CLIENT_ID`, `UPS_CLIENT_SECRET` |
 
 כל עוד `.env` לא קיים או שדה מסוים ריק — המערכת ממשיכה לעבוד עם ה-MOCK (ר' טבלה

@@ -12,8 +12,11 @@ if (isNew) {
 }
 
 const app = express();
-// נדרש כדי ש-req.ip יזהה נכון את כתובת הלקוח האמיתית (לא את ה-proxy שלפני השרת) — קריטי להגבלת הקצב על /auth/login (ר' routes.js loginRateLimit).
-app.set('trust proxy', 1);
+// נדרש כדי ש-req.ip יזהה נכון את כתובת הלקוח האמיתית (לא את ה-proxy שלפני השרת) — קריטי להגבלת הקצב על /auth/login (ר' routes.js loginRateLimit)
+// ולהגבלת ה-Webhook של UPS לפי IP. סומכים על X-Forwarded-For רק כשהחיבור מגיע מ-127.0.0.1
+// (ה-api.php המקומי, שקובע את הכותרת בעצמו מ-REMOTE_ADDR). חיבור ישיר מבחוץ לפורט של Node
+// לא יכול לזייף את כתובתו דרך הכותרת (קודם, עם trust proxy 1, הוא כן יכל).
+app.set('trust proxy', 'loopback');
 // תיקון אבטחה (סקירה 14.9.2026): הוגבל למקורות ידועים (ר' config.js corsOrigins)
 // במקום cors() פתוח שקיבל בקשות מכל אתר באינטרנט.
 app.use(cors({ origin: corsOrigins }));
@@ -49,7 +52,7 @@ server.listen(PORT, () => {
   console.log(`Aladin backend רץ על http://localhost:${PORT}`);
   console.log(`WebSocket חי על ws://localhost:${PORT}/api/live`);
   console.log(`Sigma: ${sigmaCfg.enabled ? `מחובר (${sigmaCfg.server})` : 'MOCK (לא מוגדר ב-.env)'}`);
-  console.log(`UPS webhook auth: ${upsCfg.webhookBearerSecret ? 'פעיל' : 'כבוי (מצב פיתוח, ר\' .env.example)'}`);
+  console.log(`UPS webhook auth: ${upsCfg.webhookBearerSecret ? 'Bearer פעיל' : 'Bearer כבוי'}, ${upsCfg.webhookAllowedIps.length ? `IP מורשים: ${upsCfg.webhookAllowedIps.join(', ')}` : 'ללא רשימת IP'}`);
   console.log(`UPS API משלים: ${upsCfg.reconcileEnabled ? 'פעיל' : 'כבוי (פועל עם Webhook בלבד)'}`);
 
   // מתחילים את הפולינג האמיתי רק אחרי שהשרת כבר מאזין, כדי שכשל חיבור לא ימנע עלייה

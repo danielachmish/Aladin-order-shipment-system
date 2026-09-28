@@ -24,12 +24,16 @@ $backend = 'http://127.0.0.1:4311/api' . $target;
 $method = $_SERVER['REQUEST_METHOD'];
 $body = file_get_contents('php://input');
 
+// Client-supplied forwarding headers are dropped and replaced with the real
+// peer address, so the backend's req.ip can't be spoofed by the caller. The
+// UPS webhook IP allowlist and the login rate limit both depend on it.
 $headers = [];
 foreach (getallheaders() as $k => $v) {
     $lk = strtolower($k);
-    if (in_array($lk, ['host', 'content-length', 'connection'], true)) continue;
+    if (in_array($lk, ['host', 'content-length', 'connection', 'x-forwarded-for', 'x-real-ip', 'forwarded'], true)) continue;
     $headers[] = "$k: $v";
 }
+$headers[] = 'X-Forwarded-For: ' . ($_SERVER['REMOTE_ADDR'] ?? '');
 
 $ch = curl_init($backend);
 curl_setopt_array($ch, [
