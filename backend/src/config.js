@@ -41,6 +41,10 @@ const ups = {
   reconcileIntervalMs: Number(process.env.UPS_RECONCILE_INTERVAL_MS || 60 * 60 * 1000), // "אחת לשעה" (סעיף 9.4)
   // Webhook (הערוץ הראשי) — סוד Bearer שסוכם מול UPS מול hd@ups.co.il (סעיף 9.2, 13)
   webhookBearerSecret: process.env.UPS_WEBHOOK_BEARER_SECRET || null,
+  // חלופה ל-Bearer: UPS הודיעו (28.9.2026) שהם לא יכולים לשלוח אימות בבקשות ה-Webhook,
+  // ובמקום זה ביקשו שנקבל רק מכתובות ה-IP שלהם. רשימה מופרדת בפסיקים.
+  webhookAllowedIps: (process.env.UPS_WEBHOOK_ALLOWED_IPS || '')
+    .split(',').map((s) => s.trim()).filter(Boolean),
 };
 
 module.exports = { sigma, ups, corsOrigins };
