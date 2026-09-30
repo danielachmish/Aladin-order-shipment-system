@@ -182,7 +182,7 @@ export default function App() {
           ) : tab === 'pending' ? (
             <PendingOrders />
           ) : tab === 'shipments' ? (
-            <Shipments onOpenOrder={openOrder} />
+            <Shipments user={user} onOpenOrder={openOrder} />
           ) : tab === 'inventory' ? (
             <InventoryShortages />
           ) : tab === 'backinstock' ? (

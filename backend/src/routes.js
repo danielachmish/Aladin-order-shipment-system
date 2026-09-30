@@ -6,6 +6,7 @@ const wf = require('./workflow');
 const { queueForStatus, positionInQueue } = require('./queue');
 const urgent = require('./urgentRequests');
 const ups = require('./upsWebhook');
+const shipLink = require('./shipmentLinking');
 const { emitChange } = require('./bus');
 const { ups: upsCfg, sigma: sigmaCfg } = require('./config');
 const sigmaIngest = require('./sigmaIngest');
@@ -644,7 +645,8 @@ router.get('/exceptions', (req, res) => {
   const shipmentExceptions = db.prepare(`
     SELECT * FROM shipments WHERE status = 'ship_exception' ORDER BY updated_at DESC
   `).all();
-  res.json({ onHold, linkExceptions, shipmentExceptions });
+  const ordersWithoutShipment = shipLink.ordersWithoutShipment();
+  res.json({ onHold, linkExceptions, shipmentExceptions, ordersWithoutShipment });
 });
 
 router.post('/link-exceptions/:id/resolve', requireRole('warehouse_manager', 'system_admin'), (req, res) => {
@@ -948,7 +950,7 @@ router.get('/inventory/shortages-by-supplier', requireRole('warehouse_manager', 
 router.get('/shipments', requireRole('agent', 'warehouse', 'warehouse_manager', 'system_admin'), (req, res) => {
   const rows = db.prepare(`
     SELECT track_no, status, status_desc_heb, exception_code, exception_desc_heb,
-           estimate_delivery, delivered_time, received_by, rts_track_no, updated_at
+           estimate_delivery, delivered_time, received_by, rts_track_no, ref1, ref2, service_level, updated_at
     FROM shipments
     ORDER BY updated_at DESC
     LIMIT 300
@@ -961,6 +963,26 @@ router.get('/shipments', requireRole('agent', 'warehouse', 'warehouse_manager', 
   const result = rows.map((r) => ({ ...r, orders: orderStmt.all(r.track_no) }));
   res.json({ shipments: result });
 });
+
+// קישור ידני של משלוח להזמנה (כשהקישור האוטומטי לפי ref1 לא הצליח) — ר' shipmentLinking.js
+function shipLinkAction(fn) {
+  return (req, res) => {
+    try {
+      res.json(fn(decodeURIComponent(req.params.trackNo), req));
+    } catch (e) {
+      res.status(e.status || 500).json({ error: e.message });
+    }
+  };
+}
+
+router.get('/shipments/:trackNo/link-suggestions', requireRole('warehouse_manager', 'system_admin'),
+  shipLinkAction((trackNo) => ({ suggestions: shipLink.suggestOrders(trackNo) })));
+
+router.post('/shipments/:trackNo/links', requireRole('warehouse_manager', 'system_admin'),
+  shipLinkAction((trackNo, req) => shipLink.linkShipment(trackNo, req.body?.orderKey || req.body?.orderNum, req.user.id)));
+
+router.delete('/shipments/:trackNo/links/:orderKey', requireRole('warehouse_manager', 'system_admin'),
+  shipLinkAction((trackNo, req) => shipLink.unlinkShipment(trackNo, decodeURIComponent(req.params.orderKey), req.user.id)));
 
 // הזמנות status_ID=0 ("ללא סטטוס" — עדיין אצל המזכירה, לא בתור הליקוט).
 // תצוגה בלבד: מנהל מערכת, מנהל מחסן, וסוכנים (לדעת מה מגיע בהמשך) — לא צוות

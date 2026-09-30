@@ -60,5 +60,8 @@ ensureColumn('order_items_cache', 'manual_pick_approved_at', 'TEXT');
 ensureColumn('order_items_cache', 'corrected_by_checker', 'INTEGER NOT NULL DEFAULT 0'); // ר' dashboard.js — דיוק ליקוט
 ensureColumn('workflow_state', 'check_started_at', 'TEXT'); // ר' dashboard.js — פיצול המתנה לבדיקה / בדיקה בפועל
 ensureColumn('workflow_state', 'check_started_by', 'TEXT');
+ensureColumn('shipments', 'ref1', 'TEXT'); // ר' shipmentLinking.js — הצעות קישור למשלוח לא מקושר
+ensureColumn('shipments', 'ref2', 'TEXT');
+ensureColumn('shipments', 'service_level', 'TEXT');
 
 module.exports = { db, isNew };

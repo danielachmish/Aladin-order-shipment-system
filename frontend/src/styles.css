@@ -160,6 +160,7 @@ button { font-family: inherit; }
 .badge.priority-normal { display:none; }
 
 .badge.ship-not_linked, .badge.ship-ship_not_linked { background: #eee; color: #666; }
+.badge.ship-unlinked { background: #fff1e0; color: #c25e00; }
 .badge.ship-ship_sorting, .badge.ship-ship_in_transit { background: #e9eefc; color: var(--blue); }
 .badge.ship-ship_out_for_delivery { background: #dbeafe; color: var(--blue-dark); }
 .badge.ship-ship_to_pickup_point, .badge.ship-ship_waiting_pickup { background: #ffe9d6; color: var(--orange); }
@@ -653,3 +654,17 @@ textarea, select {
 .chart-table { margin-top: 6px; font-size: 12px; }
 .chart-table summary { cursor: pointer; color: var(--teal); }
 .dash-note { font-size: 12px; color: var(--muted); }
+
+/* משלוח UPS שלא קושר להזמנה — ר' components/ShipmentLinker.jsx */
+.shipment-card.unlinked { border-color: #f0b27a; }
+.unlinked-filter { display: flex; align-items: center; gap: 8px; font-size: 13px; margin: 0 0 10px; }
+.unlinked-filter input { width: auto; }
+.btn-unlink { border: none; background: none; color: var(--muted); font-size: 12px; padding: 0 4px; cursor: pointer; }
+.ship-linker { margin-top: 8px; }
+.btn-link-toggle { border: 1px solid var(--teal); background: #fff; color: var(--teal); border-radius: 8px; padding: 6px 12px; font-size: 13px; }
+.ship-linker-panel { margin-top: 8px; display: flex; flex-direction: column; gap: 8px; }
+.ship-suggestion { display: flex; justify-content: space-between; align-items: center; gap: 8px; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: #fff; }
+.ship-suggestion > div { min-width: 0; }
+.ship-suggestion button, .ship-linker-manual button { padding: 8px 14px; border-radius: 8px; border: none; font-size: 13px; flex-shrink: 0; }
+.ship-linker-manual { display: flex; gap: 8px; }
+.ship-linker-manual input { flex: 1; min-width: 0; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border); font-size: 14px; }
