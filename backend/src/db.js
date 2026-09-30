@@ -63,5 +63,6 @@ ensureColumn('workflow_state', 'check_started_by', 'TEXT');
 ensureColumn('shipments', 'ref1', 'TEXT'); // ר' shipmentLinking.js — הצעות קישור למשלוח לא מקושר
 ensureColumn('shipments', 'ref2', 'TEXT');
 ensureColumn('shipments', 'service_level', 'TEXT');
+ensureColumn('shipment_events', 'content_hash', 'TEXT'); // ר' upsWebhook.js — זיהוי שליחה חוזרת של אותה הודעה
 
 module.exports = { db, isNew };
