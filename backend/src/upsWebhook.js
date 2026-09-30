@@ -48,14 +48,14 @@ function orderKeyFromNum(num, companyId = 3, sidra = 0) {
   return `${companyId}|${sidra}|${num}`;
 }
 
-function dedupeKeyFor(body) {
-  const digest = crypto.createHash('sha1')
-    .update(JSON.stringify({
-      trackNo: body.trackNo, statusCode: body.statusCode, exceptionCode: body.exceptionCode,
-      ref1: body.ref1, estimateDelivery: body.estimateDelivery, deliveredTime: body.deliveredTime,
-    }))
-    .digest('hex');
-  return digest;
+// טביעת אצבע של כל תוכן ההודעה (כל השדות, בסדר מפתחות קבוע). קודם זיהוי הכפילות
+// היה לפי 6 שדות בלבד ומול כל ההיסטוריה של השטר, וזה גרם לשתי תקלות:
+// (1) הודעה שהוסיפה רק receivedBy / rtsTrackNo / תיאור חדש נזרקה;
+// (2) סטטוס שחוזר על עצמו (בהפצה -> חריגה -> שוב בהפצה) נזרק, והמשלוח נתקע
+// על "חריגה". ר' בקשת דניאל 30.9.2026.
+function contentHashFor(body) {
+  const canonical = JSON.stringify(Object.keys(body).sort().map((k) => [k, body[k]]));
+  return crypto.createHash('sha1').update(canonical).digest('hex');
 }
 
 function handleWebhook(body) {
@@ -64,9 +64,14 @@ function handleWebhook(body) {
     err.status = 400;
     throw err;
   }
-  const dedupeKey = dedupeKeyFor(body);
-  const existing = db.prepare('SELECT 1 FROM shipment_events WHERE dedupe_key = ?').get(dedupeKey);
-  if (existing) {
+  // כפילות = שליחה חוזרת של אותה הודעה בדיוק, כלומר זהה להודעה האחרונה שנקלטה
+  // לאותו שטר. כל הודעה אחרת — גם אם זהה להודעה ישנה יותר — היא שינוי אמיתי.
+  // כל מה שקורה בהמשך בטוח גם בהרצה חוזרת (upsert, INSERT OR IGNORE, חריגה פתוחה
+  // אחת לשטר, סגירה רק ממצב delivered_to_ups).
+  const contentHash = contentHashFor(body);
+  const last = db.prepare('SELECT content_hash FROM shipment_events WHERE track_no = ? ORDER BY rowid DESC LIMIT 1')
+    .get(String(body.trackNo));
+  if (last && last.content_hash === contentHash) {
     return { ok: true, deduped: true, trackNo: body.trackNo };
   }
 
@@ -84,7 +89,7 @@ function handleWebhook(body) {
       ON CONFLICT(track_no) DO UPDATE SET
         status = excluded.status, status_desc_heb = excluded.status_desc_heb,
         exception_code = excluded.exception_code, exception_desc_heb = excluded.exception_desc_heb,
-        estimate_delivery = excluded.estimate_delivery, rts_track_no = excluded.rts_track_no,
+        estimate_delivery = excluded.estimate_delivery, rts_track_no = COALESCE(excluded.rts_track_no, shipments.rts_track_no),
         delivered_time = COALESCE(excluded.delivered_time, shipments.delivered_time),
         received_by = COALESCE(excluded.received_by, shipments.received_by),
         ref1 = COALESCE(excluded.ref1, shipments.ref1),
@@ -106,8 +111,10 @@ function handleWebhook(body) {
       service_level: body.serviceLevel != null && String(body.serviceLevel).trim() ? String(body.serviceLevel).trim() : null,
     });
 
-    db.prepare(`INSERT INTO shipment_events (event_id, track_no, dedupe_key, raw_body, normalized_status) VALUES (?, ?, ?, ?, ?)`)
-      .run(uid('sevt'), trackNo, dedupeKey, JSON.stringify(body), normalized);
+    // dedupe_key נשאר UNIQUE בסכמה, אז הוא מקבל מזהה ייחודי לכל אירוע; ההשוואה עצמה לפי content_hash
+    const eventId = uid('sevt');
+    db.prepare(`INSERT INTO shipment_events (event_id, track_no, dedupe_key, content_hash, raw_body, normalized_status) VALUES (?, ?, ?, ?, ?, ?)`)
+      .run(eventId, trackNo, eventId, contentHash, JSON.stringify(body), normalized);
 
     for (const num of refNums) {
       const key = orderKeyFromNum(num);
