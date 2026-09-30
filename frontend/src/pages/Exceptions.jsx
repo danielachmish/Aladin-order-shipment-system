@@ -3,6 +3,7 @@ import { api } from '../api.js';
 import { shipLabel } from '../labels.js';
 import { onLive } from '../ws.js';
 import { formatDateSafe } from '../format.js';
+import ShipmentLinker from '../components/ShipmentLinker.jsx';
 
 export default function Exceptions({ user, onOpenOrder }) {
   const [data, setData] = useState(null);
@@ -21,7 +22,8 @@ export default function Exceptions({ user, onOpenOrder }) {
 
   if (!data) return <div className="empty-state">טוען...</div>;
 
-  const total = data.onHold.length + data.linkExceptions.length + data.shipmentExceptions.length;
+  const ordersWithoutShipment = data.ordersWithoutShipment || [];
+  const total = data.onHold.length + data.linkExceptions.length + data.shipmentExceptions.length + ordersWithoutShipment.length;
 
   return (
     <div>
@@ -44,19 +46,39 @@ export default function Exceptions({ user, onOpenOrder }) {
 
       {data.linkExceptions.length > 0 && (
         <>
-          <div className="section-title">חריגות קישור UPS (אסמכתא שגויה)</div>
+          <div className="section-title">משלוחי UPS שלא קושרו להזמנה</div>
           {data.linkExceptions.map((le) => (
             <div className="admin-list-item" key={le.exception_id}>
               <div className="top">
                 <b>שטר {le.track_no}</b>
                 <span className="meta">{formatDateSafe(le.created_at)}</span>
               </div>
-              <div className="meta">מספר לא תקין: {le.bad_ref} — {le.reason}</div>
+              <div className="meta">אסמכתא: {le.bad_ref || '(ריקה)'} — {le.reason}</div>
               {isManager && (
-                <div className="actions">
-                  <button className="btn-approve" onClick={async () => { await api.resolveLinkException(le.exception_id); load(); }}>סמן כטופל</button>
-                </div>
+                <>
+                  <ShipmentLinker trackNo={le.track_no} onLinked={load} />
+                  <div className="actions">
+                    <button className="btn-approve" onClick={async () => { await api.resolveLinkException(le.exception_id); load(); }}>סמן כטופל בלי לקשר</button>
+                  </div>
+                </>
               )}
+            </div>
+          ))}
+        </>
+      )}
+
+      {ordersWithoutShipment.length > 0 && (
+        <>
+          <div className="section-title">נמסרו ל-UPS ואין להן משלוח</div>
+          {ordersWithoutShipment.map((o) => (
+            <div className="admin-list-item" key={o.order_key} onClick={() => onOpenOrder(o.order_key)} style={{ cursor: 'pointer' }}>
+              <div className="top">
+                <b>הזמנה {o.order_num}</b>
+                <span className="meta">{o.customer_name}</span>
+              </div>
+              <div className="meta" style={{ color: '#c0392b' }}>
+                נמסרה ל-UPS ב-{formatDateSafe(o.delivered_at)} ולא התקבל עליה אף עדכון משלוח
+              </div>
             </div>
           ))}
         </>

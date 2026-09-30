@@ -5,7 +5,7 @@
 const crypto = require('crypto');
 const { db } = require('./db');
 const { emitChange } = require('./bus');
-const { closeOrder, getState } = require('./workflow');
+const { recordLinkException, tryCloseDelivered, linkedOrderKeys } = require('./shipmentLinking');
 
 function uid(prefix) {
   return `${prefix}_${crypto.randomBytes(8).toString('hex')}`;
@@ -79,14 +79,17 @@ function handleWebhook(body) {
 
   const tx = db.transaction(() => {
     db.prepare(`
-      INSERT INTO shipments (track_no, status, status_desc_heb, exception_code, exception_desc_heb, estimate_delivery, rts_track_no, delivered_time, received_by, updated_at)
-      VALUES (@track_no, @status, @status_desc_heb, @exception_code, @exception_desc_heb, @estimate_delivery, @rts_track_no, @delivered_time, @received_by, datetime('now'))
+      INSERT INTO shipments (track_no, status, status_desc_heb, exception_code, exception_desc_heb, estimate_delivery, rts_track_no, delivered_time, received_by, ref1, ref2, service_level, updated_at)
+      VALUES (@track_no, @status, @status_desc_heb, @exception_code, @exception_desc_heb, @estimate_delivery, @rts_track_no, @delivered_time, @received_by, @ref1, @ref2, @service_level, datetime('now'))
       ON CONFLICT(track_no) DO UPDATE SET
         status = excluded.status, status_desc_heb = excluded.status_desc_heb,
         exception_code = excluded.exception_code, exception_desc_heb = excluded.exception_desc_heb,
         estimate_delivery = excluded.estimate_delivery, rts_track_no = excluded.rts_track_no,
         delivered_time = COALESCE(excluded.delivered_time, shipments.delivered_time),
         received_by = COALESCE(excluded.received_by, shipments.received_by),
+        ref1 = COALESCE(excluded.ref1, shipments.ref1),
+        ref2 = COALESCE(excluded.ref2, shipments.ref2),
+        service_level = COALESCE(excluded.service_level, shipments.service_level),
         updated_at = datetime('now')
     `).run({
       track_no: trackNo,
@@ -98,6 +101,9 @@ function handleWebhook(body) {
       rts_track_no: body.rtsTrackNo || null,
       delivered_time: body.deliveredTime || null,
       received_by: body.receivedBy || null,
+      ref1: body.ref1 != null && String(body.ref1).trim() ? String(body.ref1).trim() : null,
+      ref2: body.ref2 != null && String(body.ref2).trim() ? String(body.ref2).trim().replace(/,$/, '') : null,
+      service_level: body.serviceLevel != null && String(body.serviceLevel).trim() ? String(body.serviceLevel).trim() : null,
     });
 
     db.prepare(`INSERT INTO shipment_events (event_id, track_no, dedupe_key, raw_body, normalized_status) VALUES (?, ?, ?, ?, ?)`)
@@ -107,9 +113,7 @@ function handleWebhook(body) {
       const key = orderKeyFromNum(num);
       const exists = db.prepare('SELECT 1 FROM orders_cache WHERE order_key = ?').get(key);
       if (!exists) {
-        const excId = uid('lexc');
-        db.prepare(`INSERT INTO link_exceptions (exception_id, track_no, bad_ref, reason) VALUES (?, ?, ?, ?)`)
-          .run(excId, trackNo, num, 'מספר הזמנה לא נמצא');
+        recordLinkException(trackNo, num, 'מספר הזמנה לא נמצא');
         exceptions.push(num);
         continue;
       }
@@ -117,17 +121,23 @@ function handleWebhook(body) {
       linked.push(key);
     }
 
-    // מסירה סופית -> סגירה אוטומטית אם ההזמנה במצב נמסרה ל-UPS (סעיף 4.3)
-    if (normalized === 'ship_delivered') {
-      for (const key of linked) {
-        const st = getState(key);
-        if (st && st.status === 'delivered_to_ups') {
-          closeOrder(key, null);
-        }
-      }
+    // שום מספר הזמנה תקין באסמכתא (ריקה, או עם אותיות כמו SH54707) — קודם זה עבר
+    // בשקט: המשלוח נשמר בלי הזמנה ואף אחד לא ידע. עכשיו: חריגה למנהל, אלא אם
+    // המשלוח כבר קושר קודם (אוטומטית או ידנית).
+    if (refNums.length === 0 && linkedOrderKeys(trackNo).length === 0) {
+      const raw = body.ref1 != null ? String(body.ref1).trim() : '';
+      recordLinkException(trackNo, raw, raw ? 'אין מספר הזמנה תקין באסמכתא' : 'אסמכתא ריקה — אין מספר הזמנה');
+      exceptions.push(raw);
     }
   });
   tx();
+
+  // מסירה סופית -> סגירה אוטומטית של כל ההזמנות המקושרות לשטר (סעיף 4.3) — גם כאלה
+  // שקושרו קודם, למשל ידנית. מחוץ לטרנזקציה ו-best-effort: הזמנה שלא ניתן לסגור
+  // (תוספת בדרך וכו') נשארת פתוחה, אבל הסטטוס של המשלוח נשמר בכל מקרה.
+  if (normalized === 'ship_delivered') {
+    for (const key of linkedOrderKeys(trackNo)) tryCloseDelivered(key, null);
+  }
 
   emitChange('shipment', { track_no: trackNo, status: normalized, linked, exceptions });
   return { ok: true, trackNo, normalized, linked, exceptions };

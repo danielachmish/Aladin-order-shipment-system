@@ -5,6 +5,7 @@ import { shipLabel, statusLabel, priorityLabel } from '../labels.js';
 import { formatDateSafe } from '../format.js';
 import WarehouseToday from './WarehouseToday.jsx';
 import ManagementView from './ManagementView.jsx';
+import ShipmentLinker from './ShipmentLinker.jsx';
 
 // בלי WebSocket (פריסת Cloudways דרך api.php) אין עדכון חי — מרעננים לבד
 const WAREHOUSE_REFRESH_MS = 60 * 1000;
@@ -210,16 +211,17 @@ export default function Dashboard({ user, onOpenOrder }) {
 
             {linkExceptions.length > 0 && (
               <>
-                <div className="meta" style={{ fontWeight: 'bold', margin: '10px 0 4px' }}>חריגות קישור UPS (אסמכתא שגויה)</div>
+                <div className="meta" style={{ fontWeight: 'bold', margin: '10px 0 4px' }}>משלוחי UPS שלא קושרו להזמנה</div>
                 {linkExceptions.map((le) => (
                   <div className="admin-list-item" key={le.exception_id}>
                     <div className="top">
                       <b>שטר {le.track_no}</b>
                       <span className="meta">{formatDateSafe(le.created_at)}</span>
                     </div>
-                    <div className="meta">מספר לא תקין: {le.bad_ref} — {le.reason}</div>
+                    <div className="meta">אסמכתא: {le.bad_ref || '(ריקה)'} — {le.reason}</div>
+                    <ShipmentLinker trackNo={le.track_no} onLinked={load} />
                     <div className="actions">
-                      <button className="btn-approve" disabled={busy} onClick={() => resolveLink(le.exception_id)}>סמן כטופל</button>
+                      <button className="btn-approve" disabled={busy} onClick={() => resolveLink(le.exception_id)}>סמן כטופל בלי לקשר</button>
                     </div>
                   </div>
                 ))}

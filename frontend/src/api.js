@@ -137,6 +137,9 @@ export const api = {
   saveMetricsSettings: (data) => request('/settings/metrics', { method: 'POST', body: JSON.stringify(data) }),
   pendingOrders: () => request('/pending-orders'),
   shipments: () => request('/shipments'),
+  shipmentLinkSuggestions: (trackNo) => request(`/shipments/${encodeURIComponent(trackNo)}/link-suggestions`),
+  linkShipment: (trackNo, orderRef) => request(`/shipments/${encodeURIComponent(trackNo)}/links`, { method: 'POST', body: JSON.stringify(typeof orderRef === 'string' && orderRef.includes('|') ? { orderKey: orderRef } : { orderNum: orderRef }) }),
+  unlinkShipment: (trackNo, orderKey) => request(`/shipments/${encodeURIComponent(trackNo)}/links/${encodeURIComponent(orderKey)}`, { method: 'DELETE' }),
 
   listUsers: () => request('/users'),
   createUser: (data) => request('/users', { method: 'POST', body: JSON.stringify(data) }),
