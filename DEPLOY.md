@@ -36,17 +36,24 @@ pm2 restart aladin-backend
 pm2 logs aladin-backend --lines 20 --nostream    # לוודא שעלה בלי שגיאות
 ```
 
-## שלב 3 — אם יש שינוי ב-frontend (הקבצים תחת `frontend/src/`)
+## שלב 3 — אם יש שינוי ב-frontend (הקבצים תחת `frontend/src/` או `frontend/public/`)
 
-⚠️ **זה שלב שעוד לא בוצע היום** — אם עדכנתם קוד frontend, הוא **לא** יופיע
-באתר עד שתעשו את זה:
+אם עדכנתם קוד frontend, הוא **לא** יופיע באתר עד שתעשו את זה:
 
 ```bash
 cd ~/private_html/repo/frontend
 npm install --cache ~/private_html/.npm-cache
-VITE_API_BASE=https://orders.aladincorp.com npm run build
-cp -r dist/* ~/public_html/
+VITE_API_BASE=https://orders.aladincorp.com ./node_modules/.bin/vite build && cp -r dist/* ~/public_html/ && echo "הועתק בהצלחה"
 ```
+
+בסוף חייב להופיע `הועתק בהצלחה` — אם לא, שום דבר לא הועתק לאתר. אחרי זה
+לרענן את האתר עם Ctrl+Shift+R.
+
+⚠️ **לא להשתמש ב-`npm run build` או ב-`npx vite build`** בשרת הזה: תיקיית
+ה-cache של npm (`~/.npm`) שייכת ל-root, אז npm נופל מיד עם `EACCES` בזמן
+שה-build ממשיך לרוץ ברקע — וה-`cp` שאחריו מעתיק את הגרסה הישנה (התגלה
+30.9.2026). הרצה ישירה של `./node_modules/.bin/vite` לא עוברת דרך npm בכלל.
+בלי `VITE_API_BASE` ה-build פונה ל-localhost ולא יעבוד באתר.
 
 ## שלב 4 — אם יש שינוי ב-bridge/.env או ב-backend/.env
 
